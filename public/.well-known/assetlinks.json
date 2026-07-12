@@ -1,0 +1,13 @@
+// public/.well-known/assetlinks.json
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.rentfray.twa",
+      "sha256_cert_fingerprints": [
+        "B8:BA:40:00:04:BD:BB:C9:0A:BF:77:92:DB:86:57:0C:95:36:16:70:73:29:72:2C:97:93:29:7E:82:20:4B:3C"
+      ]
+    }
+  }
+]

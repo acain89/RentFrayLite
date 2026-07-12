@@ -1,0 +1,212 @@
+@import "tailwindcss";
+
+:root {
+  /* Celadon palette — BALANCED (less washed out) */
+  --rf-bg-app: #f6faf7;
+  --rf-bg-page: #f1f6f2;
+  --rf-bg-panel: #e7efe8;
+  --rf-bg-card: #f8fbf9;
+  --rf-bg-soft: #edf3ee;
+
+  --rf-accent-soft: #d7e4da;
+  --rf-accent: #bfd1c3;
+  --rf-accent-strong: #9fb9a5;
+
+  --rf-primary: #7eab86;
+  --rf-primary-hover: #6d9a75;
+  --rf-primary-pressed: #5d8765;
+
+  --rf-secondary: #90aa97;
+  --rf-secondary-hover: #7d9684;
+
+  --rf-border: #b9ccbd;
+  --rf-border-strong: #9fb7a4;
+
+  --rf-text: #1f3228;
+  --rf-text-soft: #4d6658;
+  --rf-text-muted: #70877a;
+  --rf-text-on-dark: #f7fbf8;
+
+  --rf-danger: #b85c5c;
+  --rf-warning: #b8873a;
+  --rf-success: #5f8f69;
+
+  --rf-shadow-sm: 0 2px 6px rgba(23, 48, 36, 0.06);
+  --rf-shadow-md: 0 12px 30px rgba(40, 79, 57, 0.08);
+  --rf-shadow-lg: 0 20px 50px rgba(40, 79, 57, 0.12);
+
+  --rf-radius-sm: 12px;
+  --rf-radius-md: 18px;
+  --rf-radius-lg: 24px;
+  --rf-radius-pill: 999px;
+
+  --background: var(--rf-bg-app);
+  --foreground: var(--rf-text);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--rf-bg-app);
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.65), transparent 35%),
+    linear-gradient(180deg, var(--rf-bg-app) 0%, var(--rf-bg-page) 100%);
+  color: var(--rf-text);
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  transition: all 0.18s ease;
+}
+
+input,
+select,
+textarea {
+  transition: all 0.18s ease;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(126, 171, 134, 0.22);
+}
+
+/* Layout shells */
+
+.rf-shell {
+  border: 1px solid var(--rf-border);
+  border-radius: var(--rf-radius-lg);
+  background: linear-gradient(
+      180deg,
+      rgba(255,255,255,0.82),
+      rgba(255,255,255,0.55)
+    ),
+    var(--rf-bg-page);
+  box-shadow: var(--rf-shadow-lg);
+  backdrop-filter: blur(10px);
+}
+
+.rf-panel {
+  border: 1px solid var(--rf-border);
+  border-radius: var(--rf-radius-lg);
+  background: linear-gradient(
+      180deg,
+      rgba(255,255,255,0.88),
+      rgba(255,255,255,0.62)
+    ),
+    var(--rf-bg-panel);
+  box-shadow: var(--rf-shadow-md);
+  backdrop-filter: blur(10px);
+}
+
+.rf-card {
+  background: linear-gradient(
+      180deg,
+      rgba(255,255,255,0.85),
+      rgba(255,255,255,0.55)
+    ),
+    var(--rf-bg-card);
+  border: 1px solid var(--rf-border);
+  border-radius: var(--rf-radius-md);
+  box-shadow: var(--rf-shadow-sm);
+}
+
+/* Typography */
+
+.rf-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--rf-text-muted);
+}
+
+/* Inputs */
+
+.rf-input {
+  width: 100%;
+  border: 1px solid var(--rf-border-strong);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.85);
+  color: var(--rf-text);
+}
+
+.rf-input:focus {
+  border-color: var(--rf-primary);
+  box-shadow: 0 0 0 3px rgba(126,171,134,0.18);
+}
+
+/* Buttons */
+
+.rf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--rf-radius-pill);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rf-btn-primary {
+  background: linear-gradient(
+    180deg,
+    var(--rf-primary),
+    var(--rf-primary-hover)
+  );
+  color: var(--rf-text-on-dark);
+  box-shadow:
+    0 6px 18px rgba(93,135,101,0.25),
+    inset 0 1px 0 rgba(255,255,255,0.25);
+}
+
+.rf-btn-primary:hover {
+  transform: translateY(-1px);
+}
+
+.rf-btn-secondary {
+  background: rgba(255,255,255,0.8);
+  border: 1px solid var(--rf-border-strong);
+  color: var(--rf-text);
+}
+
+.rf-btn-secondary:hover {
+  background: var(--rf-bg-soft);
+  border-color: var(--rf-primary);
+}
+
+/* Scroll */
+
+.rf-scroll {
+  scrollbar-width: thin;
+}
+
+.rf-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.rf-scroll::-webkit-scrollbar-thumb {
+  background: var(--rf-accent-strong);
+  border-radius: 999px;
+}

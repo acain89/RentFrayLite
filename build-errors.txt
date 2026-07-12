@@ -1,0 +1,118 @@
+
+> rent-platform@0.1.0 build
+> next build
+
+▲ Next.js 16.1.7 (Turbopack)
+- Environments: .env
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 20.7s
+  Running TypeScript ...
+  Collecting page data using 3 workers ...
+  Generating static pages using 3 workers (0/70) ...
+  Generating static pages using 3 workers (17/70) 
+  Generating static pages using 3 workers (34/70) 
+  Generating static pages using 3 workers (52/70) 
+✓ Generating static pages using 3 workers (70/70) in 954.0ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /admin
+├ ○ /admin/properties
+├ ƒ /admin/properties/[id]
+├ ƒ /admin/properties/[id]/setup
+├ ○ /admin/properties/new
+├ ƒ /admin/requests
+├ ƒ /api/admin/properties
+├ ƒ /api/admin/properties/[id]
+├ ƒ /api/admin/properties/[id]/charges
+├ ƒ /api/admin/properties/[id]/lifecycle
+├ ƒ /api/admin/properties/[id]/override
+├ ƒ /api/admin/properties/[id]/payment-status
+├ ƒ /api/admin/properties/[id]/setup
+├ ƒ /api/admin/properties/[id]/tiers
+├ ƒ /api/admin/properties/[id]/units
+├ ƒ /api/admin/properties/check-code
+├ ƒ /api/admin/properties/list
+├ ƒ /api/admin/property/set-status
+├ ƒ /api/admin/session
+├ ƒ /api/auth/session
+├ ƒ /api/exports/balances
+├ ƒ /api/exports/ledger
+├ ƒ /api/exports/payments
+├ ƒ /api/ledger/charges
+├ ƒ /api/ledger/post-late-fee
+├ ƒ /api/ledger/post-recurring-fees
+├ ƒ /api/ledger/post-rent
+├ ƒ /api/maintenance/dashboard
+├ ƒ /api/maintenance/session
+├ ƒ /api/manager/dashboard
+├ ƒ /api/manager/maintenance
+├ ƒ /api/manager/maintenance/update
+├ ƒ /api/manager/property/payment-status
+├ ƒ /api/manager/property/qr
+├ ƒ /api/manager/property/readiness
+├ ƒ /api/manager/property/set-payment-status
+├ ƒ /api/manager/proration
+├ ƒ /api/manager/session
+├ ƒ /api/manager/tenants/reset-pin
+├ ƒ /api/manual-payments
+├ ƒ /api/payments/create-session
+├ ƒ /api/property/resolve
+├ ƒ /api/public/property/lookup
+├ ƒ /api/request-setup
+├ ƒ /api/stripe/webhook
+├ ƒ /api/tenant/activate
+├ ƒ /api/tenant/balance
+├ ƒ /api/tenant/dashboard
+├ ƒ /api/tenant/maintenance
+├ ƒ /api/tenant/maintenance/create
+├ ƒ /api/tenant/maintenance/list
+├ ƒ /api/tenant/me
+├ ƒ /api/tenant/payment-history
+├ ƒ /api/tenant/session
+├ ○ /login/maintenance
+├ ○ /login/manager
+├ ○ /login/tenant
+├ ○ /maintenance
+├ ○ /manager
+├ ○ /manager-login
+├ ○ /manager/dashboard
+├ ○ /manager/login
+├ ○ /manager/maintenance
+├ ƒ /manager/maintenance/update
+├ ○ /manager/properties
+├ ƒ /manager/properties/[id]
+├ ƒ /manager/properties/[id]/maintenance
+├ ƒ /manager/properties/[id]/pin-reset
+├ ƒ /manager/properties/[id]/settings
+├ ƒ /manager/properties/[id]/tenants/new
+├ ƒ /manager/properties/[id]/tenants/remove
+├ ƒ /manager/properties/[id]/units/new
+├ ƒ /manager/properties/new
+├ ○ /manager/settings
+├ ○ /manager/units
+├ ƒ /manager/units/[id]
+├ ƒ /manager/units/[id]/history
+├ ƒ /manager/units/[id]/move-out
+├ ƒ /manager/units/[id]/tenants
+├ ○ /property-code
+├ ○ /property-code/role
+├ ○ /request-illustration
+├ ○ /role-select
+├ ƒ /tenant
+├ ƒ /tenant/balance
+├ ƒ /tenant/dashboard
+├ ƒ /tenant/login
+├ ƒ /tenant/maintenance
+├ ƒ /tenant/pay
+└ ƒ /tenant/payment-history
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

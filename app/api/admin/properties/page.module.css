@@ -1,0 +1,199 @@
+/* app/admin/properties/page.module.css */
+
+.page {
+  min-height: 100vh;
+  background: linear-gradient(to bottom, #f8fafc, #eef6ff, #f1f5f9);
+  padding: 1rem;
+  color: #0f172a;
+}
+
+.shell {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* HEADER */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.title {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+/* BUTTON */
+
+.primaryButton {
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* SEARCH */
+
+.searchCard {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.searchLabel {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  color: #334155;
+}
+
+.searchInput {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.searchInput:focus {
+  border-color: #0f172a;
+  box-shadow: 0 0 0 2px #e0f2fe;
+}
+
+/* STATES */
+
+.info,
+.error,
+.empty {
+  border-radius: 0.85rem;
+  padding: 0.9rem 1rem;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.info {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.empty {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+/* GRID */
+
+.grid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+/* CARD */
+
+.card {
+  display: block;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  padding: 1rem;
+  text-decoration: none;
+  color: #0f172a;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+}
+
+/* CARD HEADER */
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.cardTitle {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* STATUS */
+
+.active {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #16a34a;
+}
+
+.inactive {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #dc2626;
+}
+
+/* META */
+
+.meta {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.metaLabel {
+  font-weight: 600;
+  color: #334155;
+}
+
+/* RESPONSIVE */
+
+@media (min-width: 640px) {
+  .page {
+    padding: 1.5rem;
+  }
+
+  .header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .primaryButton {
+    width: auto;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
