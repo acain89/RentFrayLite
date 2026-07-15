@@ -7,6 +7,64 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum BusinessMode {
+  RECURRING
+  PRODUCTS_SERVICES
+  CUSTOM
+}
+
+enum BusinessStatus {
+  SETUP
+  ACTIVE
+  DISABLED
+}
+
+enum PaymentStatus {
+  CREATED
+  CHECKOUT_STARTED
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  REFUNDED
+  DISPUTED
+  RETURNED
+}
+
+enum PaymentMethod {
+  ACH
+  CARD
+}
+
+enum PaymentSourceType {
+  RECURRING_PLAN
+  CATALOG_ITEM
+  CUSTOM_POSTING
+}
+
+enum LateFeeType {
+  NONE
+  FLAT
+}
+
+enum CustomPostingStatus {
+  ACTIVE
+  CHECKOUT_STARTED
+  COMPLETED
+  EXPIRED
+}
+
+enum SmsReceiptStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum VerificationTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
 model AdminAccess {
   id         String    @id @default(cuid())
   codeHash   String
@@ -16,406 +74,264 @@ model AdminAccess {
   updatedAt  DateTime  @updatedAt
 }
 
-model Property {
-  id                    String                   @id @default(cuid())
-  name                  String
-  propertyCode          String                   @unique
-  status                String                   @default("SETUP")
-  addressLine1          String?
-  addressLine2          String?
-  city                  String?
-  state                 String?
-  zip                   String?
-  propertyType          String?
-  ownerDisplayName      String?
-  contactPhone          String?
-  contactEmail          String?
-  isActive              Boolean                  @default(true)
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  stripeAccountId       String?
-  unitCount             Int                      @default(0)
-  billingCycleStartDate DateTime?
-  auditLogs             AuditLog[]
-  ledgerEntries         LedgerEntry[]
-  maintenanceRequests   MaintenanceRequest[]
-  maintenanceUsers      MaintenanceUser[]
-  managementUsers       ManagementUser[]
-  payments              Payment[]
-  paymentStatus         PaymentConnectionStatus?
-  settings              PropertySettings?
-  tiers                 PropertyTier[]
-  tierCharges           PropertyTierCharge[]
-  tenantAssignments     TenantAssignment[]
-  units                 Unit[]
-  unitNotes             UnitNote[]
-  recurringFees         UnitRecurringFee[]
+model Business {
+  id                  String         @id @default(cuid())
+  name                String
+  accountCode         String?        @unique
+  accountCodeLockedAt DateTime?
+  mode                BusinessMode?
+  status              BusinessStatus @default(SETUP)
+
+  ownerName    String
+  contactEmail String
+  contactPhone String?
+
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  postalCode   String?
+
+  emailVerifiedAt DateTime?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  manager            Manager?
+  stripeConnection   StripeConnection?
+  recurringPlans     RecurringPlan[]
+  catalogItems       CatalogItem[]
+  customPostings     CustomPosting[]
+  payments           Payment[]
+  auditLogs          AuditLog[]
+  verificationTokens VerificationToken[]
 
   @@index([status])
+  @@index([mode])
+  @@index([contactEmail])
   @@index([isActive])
 }
 
-model PropertySettings {
-  id                        String   @id @default(cuid())
-  propertyId                String   @unique
-  rentDueDay                Int      @default(1)
-  gracePeriodDays           Int      @default(0)
-  lateFeeFlatCents          Int?
-  lateFeePercentBps         Int?
-  lateFeeEnabled            Boolean  @default(false)
-  convenienceFeeEnabled     Boolean  @default(false)
-  convenienceFeeType        String?
-  convenienceFeeAmountCents Int?
-  allowTestMode             Boolean  @default(true)
-  tenantPortalEnabled       Boolean  @default(true)
-  maintenancePortalEnabled  Boolean  @default(true)
-  onboardingComplete        Boolean  @default(false)
-  setupComplete             Boolean  @default(false)
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @updatedAt
-  property                  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+model Manager {
+  id           String    @id @default(cuid())
+  businessId   String    @unique
+  email        String
+  passwordHash String
+  displayName  String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, email])
+  @@index([email])
+  @@index([isActive])
 }
 
-model PaymentConnectionStatus {
+model StripeConnection {
   id                  String    @id @default(cuid())
-  propertyId          String    @unique
-  processorConnected  Boolean   @default(false)
-  bankConnected       Boolean   @default(false)
+  businessId          String    @unique
+  stripeAccountId     String    @unique
   chargesEnabled      Boolean   @default(false)
   payoutsEnabled      Boolean   @default(false)
   onboardingComplete  Boolean   @default(false)
   requirementsDue     Boolean   @default(false)
   requirementsSummary String?
-  lastSyncedAt        DateTime?
   readyForLive        Boolean   @default(false)
+  lastSyncedAt        DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
-  property            Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([readyForLive])
+  @@index([onboardingComplete])
 }
 
-model PropertyTier {
-  id                  String               @id @default(cuid())
-  propertyId          String
-  name                String
-  baseRentCents       Int                  @default(0)
-  unitCount           Int                  @default(0)
-  activeUnitCount     Int                  @default(0)
-  billingFrequency    String               @default("MONTHLY")
-  rentDueDay          Int                  @default(1)
-  gracePeriodDays     Int                  @default(0)
-  lateFeeType         String               @default("FLAT")
-  lateFeeInitialCents Int                  @default(0)
-  lateFeeDailyCents   Int                  @default(0)
-  maxLateFeeDays      Int                  @default(0)
-  processingFeeCents  Int                  @default(0)
-  sortOrder           Int                  @default(0)
-  isActive            Boolean              @default(true)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  property            Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  charges             PropertyTierCharge[]
-  units               Unit[]
+model RecurringPlan {
+  id                 String      @id @default(cuid())
+  businessId         String
+  name               String
+  baseAmountCents    Int
+  dueDay             Int
+  gracePeriodDays    Int         @default(0)
+  lateFeeType        LateFeeType @default(NONE)
+  lateFeeAmountCents Int         @default(0)
+  sortOrder          Int         @default(0)
+  isActive           Boolean     @default(true)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
-  @@unique([propertyId, name])
-  @@index([propertyId, sortOrder])
-  @@index([propertyId, isActive])
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  charges  RecurringCharge[]
+
+  @@unique([businessId, name])
+  @@index([businessId, sortOrder])
+  @@index([businessId, isActive])
 }
 
-model PropertyTierCharge {
-  id            String       @id @default(cuid())
-  propertyId    String
-  tierId        String
-  label         String
-  amountCents   Int
-  effectiveDate DateTime
-  isActive      Boolean      @default(true)
-  sortOrder     Int          @default(0)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  property      Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tier          PropertyTier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+model RecurringCharge {
+  id              String   @id @default(cuid())
+  recurringPlanId String
+  label           String
+  amountCents     Int
+  effectiveDate   DateTime
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@index([propertyId, tierId, isActive])
-  @@index([tierId, effectiveDate])
+  recurringPlan RecurringPlan @relation(fields: [recurringPlanId], references: [id], onDelete: Cascade)
+
+  @@index([recurringPlanId, isActive])
+  @@index([recurringPlanId, effectiveDate])
+  @@index([recurringPlanId, sortOrder])
 }
 
-model ManagementUser {
-  id                         String               @id @default(cuid())
-  propertyId                 String
-  role                       String
-  email                      String?
-  username                   String
-  passwordHash               String
-  displayName                String?
-  isActive                   Boolean              @default(true)
-  lastLoginAt                DateTime?
-  mustResetPassword          Boolean              @default(false)
-  createdByUserId            String?
-  createdAt                  DateTime             @default(now())
-  updatedAt                  DateTime             @updatedAt
-  createdLedgerEntries       LedgerEntry[]        @relation("LedgerEntryCreatedBy")
-  voidedLedgerEntries        LedgerEntry[]        @relation("LedgerEntryVoidedBy")
-  createdMaintenanceRequests MaintenanceRequest[] @relation("MaintenanceRequestCreatedByManagement")
-  updatedMaintenanceRequests MaintenanceRequest[] @relation("MaintenanceRequestUpdatedByManagement")
-  createdMaintenanceUsers    MaintenanceUser[]    @relation("MaintenanceUserCreatedBy")
-  property                   Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  createdAssignments         TenantAssignment[]   @relation("TenantAssignmentCreatedBy")
+model CatalogItem {
+  id          String   @id @default(cuid())
+  businessId  String
+  name        String
+  description String?
+  priceCents  Int
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  @@unique([propertyId, username])
-  @@index([propertyId, email])
-  @@index([propertyId, role])
-  @@index([propertyId, isActive])
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, name])
+  @@index([businessId, sortOrder])
+  @@index([businessId, isActive])
 }
 
-model Unit {
-  id                  String               @id @default(cuid())
-  propertyId          String
-  tierId              String?
-  unitNumber          String
-  unitType            String?
-  baseRentCents       Int?
-  isActive            Boolean              @default(true)
-  portalActivated     Boolean              @default(false)
-  portalFirstName     String?
-  portalLastName      String?
-  tenantPinHash       String?
-  activatedAt         DateTime?
-  activationSource    String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  ledgerEntries       LedgerEntry[]
-  maintenanceRequests MaintenanceRequest[]
-  payments            Payment[]
-  tenantAssignments   TenantAssignment[]
-  property            Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tier                PropertyTier?        @relation(fields: [tierId], references: [id])
-  notes               UnitNote[]
-  recurringFeeItems   UnitRecurringFee[]
+model CustomPosting {
+  id          String              @id @default(cuid())
+  businessId  String
+  title       String
+  description String?
+  amountCents Int
+  status      CustomPostingStatus @default(ACTIVE)
+  expiresAt   DateTime
+  claimedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
-  @@unique([propertyId, unitNumber])
-  @@index([propertyId, tierId])
-  @@index([propertyId, isActive])
-  @@index([propertyId, portalActivated])
-}
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  payments Payment[]
 
-model UnitRecurringFee {
-  id           String   @id @default(cuid())
-  propertyId   String
-  unitId       String
-  label        String
-  amountCents  Int
-  isActive     Boolean  @default(true)
-  displayOrder Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  property     Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  unit         Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
-
-  @@index([propertyId, unitId])
-  @@index([unitId, isActive])
-}
-
-model TenantAssignment {
-  id                        String          @id @default(cuid())
-  propertyId                String
-  unitId                    String
-  firstName                 String?
-  lastName                  String?
-  phone                     String?
-  email                     String?
-  moveInDate                DateTime?
-  moveOutDate               DateTime?
-  notes                     String?
-  isCurrent                 Boolean         @default(true)
-  createdByManagementUserId String?
-  createdAt                 DateTime        @default(now())
-  updatedAt                 DateTime        @updatedAt
-  ledgerEntries             LedgerEntry[]
-  payments                  Payment[]
-  createdByManagementUser   ManagementUser? @relation("TenantAssignmentCreatedBy", fields: [createdByManagementUserId], references: [id])
-  property                  Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  unit                      Unit            @relation(fields: [unitId], references: [id], onDelete: Cascade)
-
-  @@index([propertyId, unitId])
-  @@index([unitId, isCurrent])
-  @@index([propertyId, isCurrent])
-  @@index([unitId, isCurrent, moveOutDate])
-  @@index([unitId, moveInDate, createdAt])
-}
-
-model MaintenanceUser {
-  id                        String               @id @default(cuid())
-  propertyId                String
-  displayName               String
-  pinHash                   String
-  isActive                  Boolean              @default(true)
-  lastLoginAt               DateTime?
-  createdByManagementUserId String?
-  createdAt                 DateTime             @default(now())
-  updatedAt                 DateTime             @updatedAt
-  createdRequests           MaintenanceRequest[] @relation("MaintenanceRequestCreatedByMaintenance")
-  updatedRequests           MaintenanceRequest[] @relation("MaintenanceRequestUpdatedByMaintenance")
-  createdByManagementUser   ManagementUser?      @relation("MaintenanceUserCreatedBy", fields: [createdByManagementUserId], references: [id])
-  property                  Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-
-  @@unique([propertyId, pinHash])
-  @@index([propertyId, isActive])
-}
-
-model MaintenanceRequest {
-  id                             String           @id @default(cuid())
-  propertyId                     String
-  unitId                         String
-  category                       String
-  urgency                        String           @default("NORMAL")
-  status                         String           @default("OPEN")
-  description                    String
-  tenantVisibleName              String?
-  createdByTenant                Boolean          @default(false)
-  createdByManagementUserId      String?
-  createdByMaintenanceUserId     String?
-  lastUpdatedByManagementUserId  String?
-  lastUpdatedByMaintenanceUserId String?
-  createdAt                      DateTime         @default(now())
-  updatedAt                      DateTime         @updatedAt
-  completedAt                    DateTime?
-  createdByMaintenanceUser       MaintenanceUser? @relation("MaintenanceRequestCreatedByMaintenance", fields: [createdByMaintenanceUserId], references: [id])
-  createdByManagementUser        ManagementUser?  @relation("MaintenanceRequestCreatedByManagement", fields: [createdByManagementUserId], references: [id])
-  lastUpdatedByMaintenanceUser   MaintenanceUser? @relation("MaintenanceRequestUpdatedByMaintenance", fields: [lastUpdatedByMaintenanceUserId], references: [id])
-  lastUpdatedByManagementUser    ManagementUser?  @relation("MaintenanceRequestUpdatedByManagement", fields: [lastUpdatedByManagementUserId], references: [id])
-  property                       Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  unit                           Unit             @relation(fields: [unitId], references: [id], onDelete: Cascade)
-
-  @@index([propertyId, status])
-  @@index([propertyId, unitId])
-  @@index([propertyId, urgency])
-}
-
-model LedgerEntry {
-  id                        String            @id @default(cuid())
-  propertyId                String
-  unitId                    String
-  tenantAssignmentId        String?
-  paymentId                 String?
-  billingCycle              String?
-  entryType                 String
-  chargeType                String?
-  paymentMethod             String?
-  amountCents               Int
-  effectiveDate             DateTime
-  memo                      String?
-  referenceNumber           String?
-  createdByManagementUserId String?
-  createdByAdminId          String?
-  createdAt                 DateTime          @default(now())
-  updatedAt                 DateTime          @updatedAt
-  voidedAt                  DateTime?
-  voidedByManagementUserId  String?
-  voidReason                String?
-  createdByManagementUser   ManagementUser?   @relation("LedgerEntryCreatedBy", fields: [createdByManagementUserId], references: [id])
-  payment                   Payment?          @relation(fields: [paymentId], references: [id])
-  property                  Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenantAssignment          TenantAssignment? @relation(fields: [tenantAssignmentId], references: [id])
-  unit                      Unit              @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  voidedByManagementUser    ManagementUser?   @relation("LedgerEntryVoidedBy", fields: [voidedByManagementUserId], references: [id])
-
-  @@index([propertyId, unitId, effectiveDate])
-  @@index([unitId, effectiveDate])
-  @@index([tenantAssignmentId])
-  @@index([entryType])
-  @@index([paymentId])
-  @@index([billingCycle])
-  @@index([propertyId, unitId, billingCycle])
-  @@index([propertyId, billingCycle, entryType, chargeType])
-  @@index([propertyId, unitId, voidedAt])
-}
-
-model AuditLog {
-  id                     String    @id @default(cuid())
-  propertyId             String?
-  actorType              String
-  actorAdminId           String?
-  actorManagementUserId  String?
-  actorMaintenanceUserId String?
-  action                 String
-  targetType             String
-  targetId               String?
-  summary                String?
-  metadataJson           String?
-  createdAt              DateTime  @default(now())
-  property               Property? @relation(fields: [propertyId], references: [id])
-
-  @@index([propertyId, createdAt])
-  @@index([actorType, createdAt])
-  @@index([targetType, targetId])
-}
-
-model SetupRequest {
-  id           String   @id @default(cuid())
-  propertyName String
-  propertyType String?
-  address      String?
-  contactName  String
-  contactInfo  String
-  unitCount    Int      @default(0)
-  notes        String?
-  status       String   @default("NEW")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@index([status, createdAt])
-}
-
-model UnitNote {
-  id         String   @id @default(cuid())
-  propertyId String
-  unitId     String
-  content    String
-  noteType   String   @default("GENERAL")
-  isPinned   Boolean  @default(false)
-  createdBy  String?
-  createdAt  DateTime @default(now())
-  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  unit       Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
-
-  @@index([propertyId, unitId])
-  @@index([unitId, createdAt])
+  @@index([businessId, status])
+  @@index([businessId, expiresAt])
 }
 
 model Payment {
-  id                    String            @id @default(cuid())
-  propertyId            String
-  unitId                String
-  tenantAssignmentId    String?
-  stripePaymentIntentId String?           @unique
-  stripeSessionId       String?           @unique
-  billingCycle          String?
-  amountCents           Int
-  processingFeeCents    Int?
-  status                PaymentStatus
-  paymentMethod         String?
-  paidAt                DateTime?
-  failedAt              DateTime?
-  reversedAt            DateTime?
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-  ledgerEntries         LedgerEntry[]
-  property              Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenantAssignment      TenantAssignment? @relation(fields: [tenantAssignmentId], references: [id])
-  unit                  Unit              @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  id         String            @id @default(cuid())
+  businessId String
+  sourceType PaymentSourceType
+  sourceId   String?
 
-  @@index([propertyId, unitId])
-  @@index([stripePaymentIntentId])
-  @@index([stripeSessionId])
-  @@index([status])
-  @@index([billingCycle])
-  @@index([propertyId, unitId, billingCycle, status])
+  customPostingId String?
+
+  status        PaymentStatus
+  paymentMethod PaymentMethod?
+
+  payerFirstName String
+  payerLastName  String
+  payerPhone     String
+  payerEmail     String?
+  referenceLabel String?
+
+  itemDescription       String
+  lineItemsSnapshot     Json
+  subtotalCents         Int
+  platformFeeCents      Int
+  processorFeeCents     Int?
+  totalChargedCents     Int
+  businessProceedsCents Int?
+
+  billingCycle String?
+
+  stripeCheckoutSessionId String? @unique
+  stripePaymentIntentId   String? @unique
+  stripeChargeId          String? @unique
+
+  checkoutStartedAt DateTime?
+  pendingAt         DateTime?
+  paidAt            DateTime?
+  failedAt          DateTime?
+  expiredAt         DateTime?
+  refundedAt        DateTime?
+  disputedAt        DateTime?
+  returnedAt        DateTime?
+
+  failureCode    String?
+  failureMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business      Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  customPosting CustomPosting? @relation(fields: [customPostingId], references: [id], onDelete: SetNull)
+  smsReceipt    SmsReceipt?
+
+  @@index([businessId, createdAt])
+  @@index([businessId, status])
+  @@index([businessId, billingCycle])
+  @@index([businessId, sourceType, sourceId])
+  @@index([status, createdAt])
 }
 
-enum PaymentStatus {
-  UNPAID
-  PENDING
-  PAID
-  FAILED
-  REVERSED
+model SmsReceipt {
+  id                String           @id @default(cuid())
+  paymentId         String           @unique
+  phone             String
+  status            SmsReceiptStatus @default(QUEUED)
+  providerMessageId String?          @unique
+  failureMessage    String?
+  sentAt            DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+model VerificationToken {
+  id         String                @id @default(cuid())
+  businessId String
+  type       VerificationTokenType
+  tokenHash  String                @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime              @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, type])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  businessId String?
+  actorType  String
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String?
+  summary    String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  business Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+  @@index([actorType, actorId])
+  @@index([targetType, targetId])
+  @@index([action, createdAt])
 }

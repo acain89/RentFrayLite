@@ -1,24 +1,11 @@
-// app/login/manager/page.tsx
-
-import ManagerLoginClient from "./ManagerLoginClient";
-
-type ManagerLoginPageProps = {
-  searchParams: Promise<{
-    code?: string | string[] | undefined;
-  }>;
-};
-
-export default async function ManagerLoginPage({
-  searchParams,
-}: ManagerLoginPageProps) {
-  const resolvedSearchParams = await searchParams;
-  const rawCode = resolvedSearchParams?.code;
-  const propertyCode = Array.isArray(rawCode) ? rawCode[0] ?? "" : rawCode ?? "";
-
+﻿export default function ManagerLoginPage() {
   return (
-    <ManagerLoginClient
-      propertyCode={propertyCode || ""}
-      key={propertyCode}
-    />
+    <main className="rfl-placeholder-page">
+      <section className="rfl-placeholder-card">
+        <p className="rfl-eyebrow">Manager access</p>
+        <h1>Manager login</h1>
+        <p>Secure manager authentication will be implemented here.</p>
+      </section>
+    </main>
   );
 }

@@ -265,3 +265,42 @@ input:focus-visible {
     border-radius: 25px;
   }
 }
+
+.rfl-placeholder-page {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.rfl-placeholder-card {
+  width: min(100%, 540px);
+  border: 1px solid var(--rfl-border);
+  border-radius: 28px;
+  background: var(--rfl-surface);
+  box-shadow: var(--rfl-shadow);
+  padding: 36px;
+  text-align: center;
+}
+
+.rfl-placeholder-card h1 {
+  margin: 8px 0 12px;
+  font-size: clamp(28px, 7vw, 40px);
+  letter-spacing: -0.04em;
+}
+
+.rfl-placeholder-card > p:last-child {
+  margin: 0;
+  color: var(--rfl-text-soft);
+  line-height: 1.6;
+}
+
+.rfl-eyebrow {
+  margin: 0;
+  color: var(--rfl-primary-pressed);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
