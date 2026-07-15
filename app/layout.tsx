@@ -1,5 +1,3 @@
-// app/layout.tsx
-
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -15,8 +13,20 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RentFray",
-  description: "Free rent collection platform for property owners",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:10000"
+  ),
+  title: {
+    default: "RentFrayLite",
+    template: "%s | RentFrayLite",
+  },
+  description:
+    "A simple self-service platform for accepting recurring, product, service, and custom payments.",
+  applicationName: "RentFrayLite",
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({
@@ -26,9 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>
         {children}
       </body>
     </html>

@@ -1,6 +1,6 @@
 {
-  "name": "rent-platform",
-  "version": "0.1.0",
+  "name": "rentfraylite-platform",
+  "version": "1.0.0",
   "private": true,
   "engines": {
     "node": "22.x"
@@ -10,12 +10,12 @@
     "build": "next build --webpack && node scripts/copy-standalone-assets.js",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "e2e": "playwright test",
     "e2e:headed": "playwright test --headed",
     "e2e:ui": "playwright test --ui",
     "e2e:report": "playwright show-report",
-    "qa:financial": "tsx scripts/qa/audit.ts",
-    "verify": "npm run build && npm run qa:financial -- --stress --all-presets"
+    "verify": "npm run typecheck && npm run lint && npm run build"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
