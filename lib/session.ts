@@ -1,285 +1,86 @@
-// lib/session.ts
-
-import crypto from "crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { SessionType } from "@prisma/client";
 import { cookies } from "next/headers";
+import { prisma } from "@/lib/prisma";
 
-export type SessionRole =
-  | "ADMIN"
-  | "OWNER"
-  | "MANAGER"
-  | "STAFF"
-  | "TENANT"
-  | "MAINTENANCE";
+export const SESSION_COOKIE_NAME = "rfl_session";
 
-export type SessionPayload = {
-  role: SessionRole;
-  propertyId?: string;
-  adminAccessId?: string;
-  managementUserId?: string;
-  unitId?: string;
-  maintenanceUserId?: string;
-  iat: number;
-  exp: number;
-};
+const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
 
-type CreateSessionInput =
-  | {
-      role: "ADMIN";
-      adminAccessId?: string;
-    }
-  | {
-      role: "OWNER" | "MANAGER" | "STAFF";
-      propertyId: string;
-      managementUserId: string;
-    }
-  | {
-      role: "TENANT";
-      propertyId: string;
-      unitId: string;
-    }
-  | {
-      role: "MAINTENANCE";
-      propertyId: string;
-      maintenanceUserId: string;
-    };
-
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
-export const SESSION_COOKIE_NAME = "rf_session";
-
-function getSessionSecret() {
-  return process.env.SESSION_SECRET || "rentfray-dev-session-secret-change-me";
+export function hashSessionToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }
 
-function base64UrlEncode(input: string | Buffer) {
-  return Buffer.from(input)
-    .toString("base64")
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+function createRawSessionToken(): string {
+  return randomBytes(32).toString("base64url");
 }
 
-function base64UrlDecode(input: string) {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padding =
-    normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
+export async function setSessionCookie(
+  token: string,
+  expiresAt: Date
+): Promise<void> {
+  const cookieStore = await cookies();
 
-  return Buffer.from(normalized + padding, "base64").toString("utf8");
+  cookieStore.set(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    expires: expiresAt,
+  });
 }
 
-function sign(value: string) {
-  return base64UrlEncode(
-    crypto.createHmac("sha256", getSessionSecret()).update(value).digest()
-  );
+export async function clearSessionCookie(): Promise<void> {
+  const cookieStore = await cookies();
+
+  cookieStore.set(SESSION_COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    expires: new Date(0),
+  });
 }
 
-function safeEqual(a: string, b: string) {
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
+export async function createManagerSession(input: {
+  managerId: string;
+  businessId: string;
+}): Promise<void> {
+  const token = createRawSessionToken();
+  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
 
-  if (aBuf.length !== bBuf.length) {
-    return false;
-  }
+  await prisma.session.create({
+    data: {
+      tokenHash: hashSessionToken(token),
+      type: SessionType.MANAGER,
+      managerId: input.managerId,
+      businessId: input.businessId,
+      expiresAt,
+    },
+  });
 
-  return crypto.timingSafeEqual(aBuf, bBuf);
+  await setSessionCookie(token, expiresAt);
 }
 
-function isValidRole(role: unknown): role is SessionRole {
-  return (
-    role === "ADMIN" ||
-    role === "OWNER" ||
-    role === "MANAGER" ||
-    role === "STAFF" ||
-    role === "TENANT" ||
-    role === "MAINTENANCE"
-  );
+export async function createAdminSession(
+  adminAccessId: string
+): Promise<void> {
+  const token = createRawSessionToken();
+  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+
+  await prisma.session.create({
+    data: {
+      tokenHash: hashSessionToken(token),
+      type: SessionType.ADMIN,
+      adminAccessId,
+      expiresAt,
+    },
+  });
+
+  await setSessionCookie(token, expiresAt);
 }
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function isValidPayloadShape(parsed: Partial<SessionPayload>): parsed is SessionPayload {
-  if (!parsed || !isValidRole(parsed.role)) {
-    return false;
-  }
-
-  if (typeof parsed.iat !== "number" || typeof parsed.exp !== "number") {
-    return false;
-  }
-
-  if (parsed.propertyId !== undefined && !isNonEmptyString(parsed.propertyId)) {
-    return false;
-  }
-
-  if (
-    parsed.adminAccessId !== undefined &&
-    !isNonEmptyString(parsed.adminAccessId)
-  ) {
-    return false;
-  }
-
-  if (
-    parsed.managementUserId !== undefined &&
-    !isNonEmptyString(parsed.managementUserId)
-  ) {
-    return false;
-  }
-
-  if (parsed.unitId !== undefined && !isNonEmptyString(parsed.unitId)) {
-    return false;
-  }
-
-  if (
-    parsed.maintenanceUserId !== undefined &&
-    !isNonEmptyString(parsed.maintenanceUserId)
-  ) {
-    return false;
-  }
-
-  if (parsed.role === "ADMIN") {
-    return true;
-  }
-
-  if (
-    parsed.role === "OWNER" ||
-    parsed.role === "MANAGER" ||
-    parsed.role === "STAFF"
-  ) {
-    return (
-      isNonEmptyString(parsed.propertyId) &&
-      isNonEmptyString(parsed.managementUserId)
-    );
-  }
-
-  if (parsed.role === "TENANT") {
-    return (
-      isNonEmptyString(parsed.propertyId) &&
-      isNonEmptyString(parsed.unitId)
-    );
-  }
-
-  if (parsed.role === "MAINTENANCE") {
-    return (
-      isNonEmptyString(parsed.propertyId) &&
-      isNonEmptyString(parsed.maintenanceUserId)
-    );
-  }
-
-  return false;
-}
-
-export function createSessionToken(input: CreateSessionInput) {
-  const now = Math.floor(Date.now() / 1000);
-
-  let payload: SessionPayload;
-
-  switch (input.role) {
-    case "ADMIN":
-      payload = {
-        role: "ADMIN",
-        ...(input.adminAccessId ? { adminAccessId: input.adminAccessId } : {}),
-        iat: now,
-        exp: now + SESSION_TTL_SECONDS,
-      };
-      break;
-
-    case "OWNER":
-    case "MANAGER":
-    case "STAFF":
-      payload = {
-        role: input.role,
-        propertyId: input.propertyId,
-        managementUserId: input.managementUserId,
-        iat: now,
-        exp: now + SESSION_TTL_SECONDS,
-      };
-      break;
-
-    case "TENANT":
-      payload = {
-        role: "TENANT",
-        propertyId: input.propertyId,
-        unitId: input.unitId,
-        iat: now,
-        exp: now + SESSION_TTL_SECONDS,
-      };
-      break;
-
-    case "MAINTENANCE":
-      payload = {
-        role: "MAINTENANCE",
-        propertyId: input.propertyId,
-        maintenanceUserId: input.maintenanceUserId,
-        iat: now,
-        exp: now + SESSION_TTL_SECONDS,
-      };
-      break;
-  }
-
-  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
-  const signature = sign(encodedPayload);
-
-  return `${encodedPayload}.${signature}`;
-}
-
-export function verifySessionToken(token: string): SessionPayload | null {
-  try {
-    const parts = token.split(".");
-
-    if (parts.length !== 2) {
-      return null;
-    }
-
-    const [encodedPayload, signature] = parts;
-
-    if (!encodedPayload || !signature) {
-      return null;
-    }
-
-    const expectedSignature = sign(encodedPayload);
-
-    if (!safeEqual(signature, expectedSignature)) {
-      return null;
-    }
-
-    const parsed = JSON.parse(
-      base64UrlDecode(encodedPayload)
-    ) as Partial<SessionPayload>;
-
-    const now = Math.floor(Date.now() / 1000);
-
-    if (!isValidPayloadShape(parsed)) {
-      return null;
-    }
-
-    if (parsed.exp <= now) {
-      return null;
-    }
-
-    if (parsed.iat > now + 60) {
-      return null;
-    }
-
-    return {
-      role: parsed.role,
-      ...(parsed.propertyId ? { propertyId: parsed.propertyId } : {}),
-      ...(parsed.adminAccessId ? { adminAccessId: parsed.adminAccessId } : {}),
-      ...(parsed.managementUserId
-        ? { managementUserId: parsed.managementUserId }
-        : {}),
-      ...(parsed.unitId ? { unitId: parsed.unitId } : {}),
-      ...(parsed.maintenanceUserId
-        ? { maintenanceUserId: parsed.maintenanceUserId }
-        : {}),
-      iat: parsed.iat,
-      exp: parsed.exp,
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function getSession() {
+export async function getCurrentSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
@@ -287,112 +88,62 @@ export async function getSession() {
     return null;
   }
 
-  return verifySessionToken(token);
-}
-
-export async function requireSession() {
-  const session = await getSession();
+  const session = await prisma.session.findUnique({
+    where: {
+      tokenHash: hashSessionToken(token),
+    },
+    include: {
+      manager: {
+        include: {
+          business: true,
+        },
+      },
+      business: true,
+      adminAccess: true,
+    },
+  });
 
   if (!session) {
-    throw new Error("Unauthorized");
+    return null;
+  }
+
+  if (session.expiresAt <= new Date()) {
+    await prisma.session.delete({
+      where: {
+        id: session.id,
+      },
+    });
+
+    return null;
+  }
+
+  const renewalThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  if (session.lastUsedAt < renewalThreshold) {
+    await prisma.session.update({
+      where: {
+        id: session.id,
+      },
+      data: {
+        lastUsedAt: new Date(),
+      },
+    });
   }
 
   return session;
 }
 
-export async function requireRole(role: SessionRole) {
-  const session = await requireSession();
-
-  if (session.role !== role) {
-    throw new Error("Forbidden");
-  }
-
-  return session;
-}
-
-export async function requireManagementSession() {
-  const session = await requireSession();
-
-  if (
-    session.role !== "OWNER" &&
-    session.role !== "MANAGER" &&
-    session.role !== "STAFF"
-  ) {
-    throw new Error("Forbidden");
-  }
-
-  return session;
-}
-
-export async function requireManagerLevelSession() {
-  const session = await requireSession();
-
-  if (session.role !== "OWNER" && session.role !== "MANAGER") {
-    throw new Error("Forbidden");
-  }
-
-  return session;
-}
-
-export async function clearSessionCookie() {
+export async function destroyCurrentSession(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 0,
-  });
-}
+  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
-export async function setSessionCookie(token: string) {
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: SESSION_TTL_SECONDS,
-  });
-}
-
-export async function refreshSessionCookie(session: SessionPayload) {
-  let refreshedToken: string;
-
-  if (session.role === "ADMIN") {
-    refreshedToken = createSessionToken({
-      role: "ADMIN",
-      adminAccessId: session.adminAccessId,
-    });
-  } else if (
-    session.role === "OWNER" ||
-    session.role === "MANAGER" ||
-    session.role === "STAFF"
-  ) {
-    if (!session.propertyId || !session.managementUserId) return;
-
-    refreshedToken = createSessionToken({
-      role: session.role,
-      propertyId: session.propertyId,
-      managementUserId: session.managementUserId,
-    });
-  } else if (session.role === "TENANT") {
-    if (!session.propertyId || !session.unitId) return;
-
-    refreshedToken = createSessionToken({
-      role: "TENANT",
-      propertyId: session.propertyId,
-      unitId: session.unitId,
-    });
-  } else {
-    if (!session.propertyId || !session.maintenanceUserId) return;
-
-    refreshedToken = createSessionToken({
-      role: "MAINTENANCE",
-      propertyId: session.propertyId,
-      maintenanceUserId: session.maintenanceUserId,
+  if (token) {
+    await prisma.session.deleteMany({
+      where: {
+        tokenHash: hashSessionToken(token),
+      },
     });
   }
 
-  await setSessionCookie(refreshedToken);
+  await clearSessionCookie();
 }

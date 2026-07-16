@@ -1,71 +1,55 @@
-// app/api/auth/session/route.ts
-
+import { SessionType } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { getSession, clearSessionCookie } from "@/lib/session";
-
-
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-type SessionUser = {
-  role: string;
-  propertyId: string | null;
-  managementUserId: string | null;
-  unitId: string | null;
-  maintenanceUserId: string | null;
-};
+import { getCurrentSession } from "@/lib/session";
 
 export async function GET() {
-  try {
-    const session = await getSession();
+  const session = await getCurrentSession();
 
-    if (!session) {
-      return NextResponse.json({
-        ok: false,
-        user: null,
-        onboarding: null,
-      });
-    }
-
-    const user: SessionUser = {
-      role: String(session.role),
-      propertyId: session.propertyId ?? null,
-      managementUserId: session.managementUserId ?? null,
-      unitId: session.unitId ?? null,
-      maintenanceUserId: session.maintenanceUserId ?? null,
-    };
-
-    return NextResponse.json({
-      ok: true,
-      user,
-      onboarding: {
-        hasProperty: Boolean(user.propertyId),
-        needsSetup: false,
-        needsBankConnection: false,
+  if (!session) {
+    return NextResponse.json(
+      {
+        authenticated: false,
       },
-    });
-  } catch {
+      { status: 401 }
+    );
+  }
+
+  if (
+    session.type === SessionType.MANAGER &&
+    session.manager &&
+    session.business
+  ) {
     return NextResponse.json({
-      ok: false,
-      user: null,
-      onboarding: null,
+      authenticated: true,
+      type: SessionType.MANAGER,
+      manager: {
+        id: session.manager.id,
+        email: session.manager.email,
+        displayName: session.manager.displayName,
+      },
+      business: {
+        id: session.business.id,
+        name: session.business.name,
+        accountCode: session.business.accountCode,
+        status: session.business.status,
+        mode: session.business.mode,
+      },
+      expiresAt: session.expiresAt,
     });
   }
-}
 
-export async function POST() {
+  if (session.type === SessionType.ADMIN && session.adminAccess) {
+    return NextResponse.json({
+      authenticated: true,
+      type: SessionType.ADMIN,
+      expiresAt: session.expiresAt,
+    });
+  }
+
   return NextResponse.json(
     {
-      ok: false,
-      error: "Use the role-specific login route for this account type.",
+      authenticated: false,
     },
-    { status: 400 }
+    { status: 401 }
   );
-}
-
-export async function DELETE() {
-  await clearSessionCookie();
-
-  return NextResponse.json({
-    ok: true,
-  });
 }

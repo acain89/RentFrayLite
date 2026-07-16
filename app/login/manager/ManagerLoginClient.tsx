@@ -5,14 +5,16 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type LoginResponse = {
+  authenticated?: boolean;
   redirectTo?: string;
   error?: string;
 };
 
-export default function AdminLoginPage() {
+export default function ManagerLoginClient() {
   const router = useRouter();
 
-  const [code, setCode] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -31,8 +33,9 @@ export default function AdminLoginPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          type: "ADMIN",
-          code,
+          type: "MANAGER",
+          email,
+          password,
         }),
       });
 
@@ -54,31 +57,45 @@ export default function AdminLoginPage() {
 
   return (
     <main className="rfl-auth-page">
-      <section className="rfl-auth-card rfl-auth-card-small">
+      <section className="rfl-auth-card">
         <Link className="rfl-auth-home-link" href="/">
           RentFrayLite
         </Link>
 
         <header className="rfl-auth-header">
-          <p className="rfl-eyebrow">Administration</p>
-          <h1>Admin access</h1>
+          <p className="rfl-eyebrow">Manager access</p>
+          <h1>Welcome back</h1>
+          <p>Sign in to manage your business and payments.</p>
         </header>
 
         <form className="rfl-auth-form" onSubmit={handleSubmit}>
-          <label htmlFor="adminCode">6-digit admin code</label>
+          <label htmlFor="managerEmail">Email address</label>
 
           <input
-            id="adminCode"
-            name="code"
-            type="password"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            pattern="\d{6}"
+            id="managerEmail"
+            name="email"
+            type="email"
+            autoComplete="email"
             required
-            value={code}
+            value={email}
             onChange={(event) => {
-              setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+              setEmail(event.target.value);
+              setError("");
+            }}
+          />
+
+          <label htmlFor="managerPassword">Password</label>
+
+          <input
+            id="managerPassword"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            minLength={8}
+            value={password}
+            onChange={(event) => {
+              setPassword(event.target.value);
               setError("");
             }}
           />
@@ -94,9 +111,13 @@ export default function AdminLoginPage() {
             type="submit"
             disabled={submitting}
           >
-            {submitting ? "Checking..." : "Continue"}
+            {submitting ? "Signing in..." : "Sign In"}
           </button>
         </form>
+
+        <Link className="rfl-auth-secondary-link" href="/setup">
+          Create a business account
+        </Link>
       </section>
     </main>
   );
