@@ -32,7 +32,6 @@ export async function GET() {
         name: session.business.name,
         accountCode: session.business.accountCode,
         status: session.business.status,
-        mode: session.business.mode,
       },
       expiresAt: session.expiresAt,
     });

@@ -7,16 +7,37 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum BusinessMode {
-  RECURRING
-  PRODUCTS_SERVICES
-  CUSTOM
+enum OneTimeChargeStatus {
+  PENDING
+  PAID
+  CANCELLED
 }
 
 enum BusinessStatus {
   SETUP
   ACTIVE
   DISABLED
+}
+
+enum CheckoutSessionStatus {
+  CREATED
+  REVIEWED
+  CHECKOUT_STARTED
+  PAID
+  FAILED
+  EXPIRED
+  ABANDONED
+}
+
+enum SetupStep {
+  VERIFY_EMAIL
+  CONFIGURE_RECURRING_TIERS
+  CONFIGURE_RECURRING_CHARGES
+  CONFIGURE_RECURRING_BILLING
+  REVIEW_RECURRING
+  CONNECT_STRIPE
+  CHOOSE_ACCOUNT_CODE
+  COMPLETE
 }
 
 enum PaymentStatus {
@@ -47,20 +68,9 @@ enum SessionType {
   ADMIN
 }
 
-enum LateFeeType {
-  NONE
-  FLAT
-}
-
-enum CustomPostingStatus {
-  ACTIVE
-  CHECKOUT_STARTED
-  COMPLETED
-  EXPIRED
-}
-
 enum SmsReceiptStatus {
   QUEUED
+  SENDING
   SENT
   FAILED
 }
@@ -88,8 +98,9 @@ model Business {
   name                String
   accountCode         String?        @unique
   accountCodeLockedAt DateTime?
-  mode                BusinessMode?
   status              BusinessStatus @default(SETUP)
+  setupStep           SetupStep      @default(VERIFY_EMAIL)
+  setupCompletedAt    DateTime?
 
   ownerName    String
   contactEmail String
@@ -109,15 +120,13 @@ model Business {
   manager            Manager?
   stripeConnection   StripeConnection?
   recurringPlans     RecurringPlan[]
-  catalogItems       CatalogItem[]
-  customPostings     CustomPosting[]
   payments           Payment[]
   auditLogs          AuditLog[]
   verificationTokens VerificationToken[]
   sessions           Session[]
+  oneTimeCharges     OneTimeCharge[]
 
   @@index([status])
-  @@index([mode])
   @@index([contactEmail])
   @@index([isActive])
 }
@@ -160,19 +169,66 @@ model StripeConnection {
   @@index([onboardingComplete])
 }
 
+model CheckoutSession {
+  id String @id @default(cuid())
+
+  businessId  String
+  accountCode String
+  planId      String
+
+  billingCycle String
+  unitNumber   String
+  firstName    String
+  lastName     String
+  phone        String
+
+  paymentMethod PaymentMethod
+
+  baseAmountCents       Int
+  recurringChargesCents Int
+  initialLateFeeCents   Int
+  dailyLateFeesCents    Int
+  subtotalCents         Int
+  platformFeeCents      Int
+  totalCents            Int
+
+  lineItems Json
+
+  dueDate     DateTime
+  graceEndsAt DateTime
+
+  status CheckoutSessionStatus @default(CREATED)
+
+  stripeCheckoutSessionId String? @unique
+  paymentId               String?
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([accountCode])
+  @@index([planId])
+  @@index([billingCycle])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([businessId, unitNumber, billingCycle])
+}
+
 model RecurringPlan {
-  id                 String      @id @default(cuid())
-  businessId         String
-  name               String
-  baseAmountCents    Int
-  dueDay             Int
-  gracePeriodDays    Int         @default(0)
-  lateFeeType        LateFeeType @default(NONE)
-  lateFeeAmountCents Int         @default(0)
-  sortOrder          Int         @default(0)
-  isActive           Boolean     @default(true)
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  id                  String   @id @default(cuid())
+  businessId          String
+  name                String
+  baseAmountCents     Int
+  dueDay              Int
+  gracePeriodDays     Int      @default(1)
+  initialLateFeeCents Int      @default(0)
+  dailyLateFeeCents   Int      @default(0)
+  dailyLateFeeMaxDays Int      @default(0)
+  sortOrder           Int      @default(0)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   charges  RecurringCharge[]
@@ -183,60 +239,52 @@ model RecurringPlan {
 }
 
 model RecurringCharge {
-  id              String   @id @default(cuid())
-  recurringPlanId String
-  label           String
-  amountCents     Int
-  effectiveDate   DateTime
-  sortOrder       Int      @default(0)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  recurringPlanId       String
+  sharedChargeGroupId   String?
+  label                 String
+  amountCents           Int
+  effectiveBillingCycle String?
+  endsAfterBillingCycle String?
+  sortOrder             Int      @default(0)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   recurringPlan RecurringPlan @relation(fields: [recurringPlanId], references: [id], onDelete: Cascade)
 
   @@index([recurringPlanId, isActive])
-  @@index([recurringPlanId, effectiveDate])
   @@index([recurringPlanId, sortOrder])
+  @@index([sharedChargeGroupId])
+  @@index([effectiveBillingCycle])
+  @@index([endsAfterBillingCycle])
 }
 
-model CatalogItem {
-  id          String   @id @default(cuid())
-  businessId  String
-  name        String
-  description String?
-  priceCents  Int
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model OneTimeCharge {
+  id         String @id @default(cuid())
+  businessId String
+
+  unitNumber           String
+  normalizedUnitNumber String
+
+  label       String
+  amountCents Int
+
+  status OneTimeChargeStatus @default(PENDING)
+
+  paymentId   String?
+  paidAt      DateTime?
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  @@unique([businessId, name])
-  @@index([businessId, sortOrder])
-  @@index([businessId, isActive])
-}
-
-model CustomPosting {
-  id          String              @id @default(cuid())
-  businessId  String
-  title       String
-  description String?
-  amountCents Int
-  status      CustomPostingStatus @default(ACTIVE)
-  expiresAt   DateTime
-  claimedAt   DateTime?
-  completedAt DateTime?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-
-  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  payments Payment[]
+  payment  Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 
   @@index([businessId, status])
-  @@index([businessId, expiresAt])
-  @@index([status, expiresAt])
+  @@index([businessId, normalizedUnitNumber, status])
+  @@index([paymentId])
 }
 
 model Payment {
@@ -244,8 +292,6 @@ model Payment {
   businessId String
   sourceType PaymentSourceType
   sourceId   String?
-
-  customPostingId String?
 
   status        PaymentStatus  @default(CREATED)
   paymentMethod PaymentMethod?
@@ -285,16 +331,15 @@ model Payment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  business      Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  customPosting CustomPosting? @relation(fields: [customPostingId], references: [id], onDelete: SetNull)
-  smsReceipt    SmsReceipt?
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  smsReceipt     SmsReceipt?
+  oneTimeCharges OneTimeCharge[]
 
   @@index([businessId, createdAt])
   @@index([businessId, status])
   @@index([businessId, billingCycle])
   @@index([businessId, sourceType, sourceId])
   @@index([status, createdAt])
-  @@index([customPostingId])
 }
 
 model SmsReceipt {

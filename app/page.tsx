@@ -29,7 +29,7 @@ export default function HomePage() {
     }
 
     setError("");
-    router.push(`/checkout?code=${encodeURIComponent(normalizedCode)}`);
+    router.push(`/${encodeURIComponent(normalizedCode)}`);
   }
 
   return (

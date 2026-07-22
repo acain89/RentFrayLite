@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
-import { authenticateAdmin, authenticateManager } from "@/lib/auth";
+import {
+  authenticateAdmin,
+  authenticateManager,
+} from "@/lib/auth";
 import {
   createAdminSession,
   createManagerSession,
   destroyCurrentSession,
 } from "@/lib/session";
+import { getSetupRoute } from "@/lib/setupProgress";
 import { loginSchema } from "@/lib/validators";
 
 export async function POST(request: Request) {
@@ -56,9 +60,14 @@ export async function POST(request: Request) {
       businessId: manager.businessId,
     });
 
+    const setupRoute = getSetupRoute(manager.business);
+
     return NextResponse.json({
       authenticated: true,
-      redirectTo: "/manager/dashboard",
+      redirectTo:
+        setupRoute === "/manager/dashboard"
+          ? "/manager/dashboard"
+          : "/setup/continue",
     });
   }
 
