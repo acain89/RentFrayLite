@@ -2,7 +2,7 @@
 
 export function buildPropertyLink(propertyCode: string) {
   const base =
-    process.env.NEXT_PUBLIC_APP_URL || "https://rentfray.com";
+   process.env.NEXT_PUBLIC_APP_URL || "http://localhost:10000";
 
   return `${base}/property-code?code=${propertyCode}`;
 }
