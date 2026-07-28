@@ -173,8 +173,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const business =
-    await getPublicCheckoutBusiness(accountCode);
+const business =
+  await getPublicCheckoutBusiness(
+    accountCode,
+    unitNumber
+  );
 
   if (
     !business ||
@@ -248,10 +251,11 @@ if (!business.accountCode) {
     })),
   };
 
-  const pricing = calculateCheckoutPricing({
-    plan: pricingPlan,
-    paymentMethod: body.paymentMethod,
-  });
+const pricing = calculateCheckoutPricing({
+  plan: pricingPlan,
+  paymentMethod: body.paymentMethod,
+  oneTimeCharges: business.oneTimeCharges,
+});
 
   const expiresAt = new Date(
     Date.now() + 30 * 60 * 1000
@@ -288,6 +292,11 @@ if (!business.accountCode) {
           pricing.totalChargedCents,
 
         lineItems: pricing.lineItems,
+
+        oneTimeChargeIds:
+  pricing.activeOneTimeCharges.map(
+    (charge) => charge.id
+  ),
 
         dueDate: pricing.dueDate,
         graceEndsAt: pricing.graceEndsAt,

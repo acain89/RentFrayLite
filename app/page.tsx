@@ -82,15 +82,23 @@ export default function HomePage() {
             onClick={() => router.push("/setup")}
             className="rfl-secondary-button"
           >
-            Start Accepting Payments
+            Create Free Business Account
           </button>
 
           <button
             type="button"
             onClick={() => router.push("/login/manager")}
-            className="rfl-text-button"
+            className="rfl-secondary-button rfl-manager-login-button"
           >
             Manager Login
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/download")}
+            className="rfl-download-link"
+          >
+            Install on your phone
           </button>
         </div>
       </section>

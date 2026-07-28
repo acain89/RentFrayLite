@@ -11,7 +11,7 @@ async function main(): Promise<void> {
     process.env.SEED_MANAGER_PASSWORD ?? "ChangeMe123!";
 
   const adminCode =
-    process.env.SEED_ADMIN_CODE ?? "246810";
+    process.env.SEED_ADMIN_CODE ?? "893889";
 
   const managerPasswordHash = await bcrypt.hash(managerPassword, 12);
   const adminCodeHash = await bcrypt.hash(adminCode, 12);

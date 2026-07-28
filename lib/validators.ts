@@ -9,7 +9,7 @@ export const managerLoginSchema = z.object({
     .transform((value) => value.toLowerCase()),
   password: z
     .string()
-    .min(8, "Password must contain at least 8 characters.")
+    .min(6, "Password must contain at least 6 characters.")
     .max(128, "Password is too long."),
 });
 
@@ -56,9 +56,13 @@ export const setupAccountSchema = z
       .transform((value) => value.toLowerCase()),
     password: z
       .string()
-      .min(8, "Password must contain at least 8 characters.")
+      .min(6, "Password must contain at least 6 characters.")
       .max(128, "Password is too long."),
     confirmPassword: z.string(),
+    acceptedTerms: z.literal(true, {
+      message:
+        "You must agree to the Terms of Service and Privacy Policy.",
+    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match.",

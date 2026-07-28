@@ -327,6 +327,26 @@ async function beginCheckout() {
             </ul>
           </div>
 
+          <div className="rfl-checkout-trust">
+            <strong>Secure checkout powered by Stripe</strong>
+            <span>
+              RentFrayLite does not store complete bank account or card
+              numbers.
+            </span>
+          </div>
+
+          <p className="rfl-checkout-legal-notice">
+            By continuing, you agree to the{" "}
+            <Link href="/terms" target="_blank">
+              Terms of Service
+            </Link>{" "}
+            and acknowledge the{" "}
+            <Link href="/privacy" target="_blank">
+              Privacy Policy
+            </Link>
+            .
+          </p>
+
           <div className="rfl-review-actions">
             <Link
               className="rfl-review-back-button"

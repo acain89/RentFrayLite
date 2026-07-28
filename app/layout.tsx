@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import SiteFooter from "@/components/SiteFooter";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
     template: "%s | RentFrayLite",
   },
   description:
-    "A simple self-service platform for accepting recurring, product, service, and custom payments.",
+    "Simple recurring and one-time payment collection for independent businesses.",
   applicationName: "RentFrayLite",
   robots: {
     index: true,
@@ -37,7 +38,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        {children}
+        <div className="rfl-site-frame">
+          <div className="rfl-site-content">{children}</div>
+          <SiteFooter />
+        </div>
       </body>
     </html>
   );

@@ -92,7 +92,7 @@ export default function ManagerLoginClient() {
             type="password"
             autoComplete="current-password"
             required
-            minLength={8}
+            minLength={6}
             value={password}
             onChange={(event) => {
               setPassword(event.target.value);

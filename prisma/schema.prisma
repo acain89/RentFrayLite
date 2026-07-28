@@ -192,7 +192,8 @@ model CheckoutSession {
   platformFeeCents      Int
   totalCents            Int
 
-  lineItems Json
+  lineItems        Json
+  oneTimeChargeIds Json?
 
   dueDate     DateTime
   graceEndsAt DateTime

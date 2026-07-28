@@ -14,6 +14,7 @@ export default function SetupAccountClient() {
 
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showPasswords, setShowPasswords] = useState(false);
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
@@ -39,6 +40,7 @@ export default function SetupAccountClient() {
           managerEmail: formData.get("managerEmail"),
           password: formData.get("password"),
           confirmPassword: formData.get("confirmPassword"),
+          acceptedTerms: formData.get("acceptedTerms") === "yes",
         }),
       });
 
@@ -147,9 +149,9 @@ export default function SetupAccountClient() {
               <input
                 id="password"
                 name="password"
-                type="password"
+                type={showPasswords ? "text" : "password"}
                 autoComplete="new-password"
-                minLength={8}
+                minLength={6}
                 maxLength={128}
                 required
               />
@@ -162,14 +164,45 @@ export default function SetupAccountClient() {
               <input
                 id="confirmPassword"
                 name="confirmPassword"
-                type="password"
+                type={showPasswords ? "text" : "password"}
                 autoComplete="new-password"
-                minLength={8}
+                minLength={6}
                 maxLength={128}
                 required
               />
             </div>
           </div>
+
+          <label className="rfl-password-toggle">
+            <input
+              type="checkbox"
+              checked={showPasswords}
+              onChange={(event) => {
+                setShowPasswords(event.target.checked);
+              }}
+            />
+            <span>Show passwords</span>
+          </label>
+
+          <label className="rfl-legal-acceptance">
+            <input
+              name="acceptedTerms"
+              type="checkbox"
+              value="yes"
+              required
+            />
+            <span>
+              I have read and agree to the{" "}
+              <Link href="/terms" target="_blank">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" target="_blank">
+                Privacy Policy
+              </Link>
+              .
+            </span>
+          </label>
 
           {error ? (
             <p className="rfl-error" role="alert">

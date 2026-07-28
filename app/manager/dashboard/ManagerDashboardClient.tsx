@@ -201,14 +201,25 @@ useEffect(() => {
     History
   </Link>
 
-  <form action="/api/auth/logout" method="post">
-    <button
-      className="rfl-secondary-button rfl-dashboard-signout"
-      type="submit"
-    >
-      Sign Out
-    </button>
-  </form>
+  <button
+  className="rfl-secondary-button rfl-dashboard-signout"
+  type="button"
+  onClick={async () => {
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Logout failed.");
+      }
+    } finally {
+      window.location.assign("/");
+    }
+  }}
+>
+  Sign Out
+</button>
 </div>
       </header>
 

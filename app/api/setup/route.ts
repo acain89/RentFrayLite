@@ -85,7 +85,13 @@ export async function POST(request: Request) {
         targetType: "BUSINESS",
         targetId: business.id,
         summary:
-          "RentFrayLite business account created.",
+            "RentFrayLite business account created.",
+          metadata: {
+            acceptedTerms: true,
+            termsVersion: "1.0",
+            privacyVersion: "1.0",
+            acceptedAt: new Date().toISOString(),
+          },
       },
     });
 

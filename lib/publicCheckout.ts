@@ -1,5 +1,6 @@
 import {
   BusinessStatus,
+  OneTimeChargeStatus,
   SetupStep,
 } from "@prisma/client";
 import {
@@ -8,8 +9,10 @@ import {
 } from "@/lib/accountCode";
 import { prisma } from "@/lib/prisma";
 
+
 export async function getPublicCheckoutBusiness(
-  rawAccountCode: string
+  rawAccountCode: string,
+  normalizedUnitNumber?: string
 ) {
   const accountCode = normalizeAccountCode(
     decodeURIComponent(rawAccountCode)
@@ -39,6 +42,25 @@ export async function getPublicCheckoutBusiness(
           payoutsEnabled: true,
         },
       },
+
+       oneTimeCharges: {
+  where: {
+   status: OneTimeChargeStatus.PENDING,
+    ...(normalizedUnitNumber
+      ? {
+          normalizedUnitNumber,
+        }
+      : {}),
+  },
+  orderBy: {
+    createdAt: "asc",
+  },
+  select: {
+    id: true,
+    label: true,
+    amountCents: true,
+  },
+},
 
       recurringPlans: {
         where: {

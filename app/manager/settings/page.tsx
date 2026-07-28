@@ -66,6 +66,24 @@ export default async function ManagerSettingsPage() {
 
         <section className="rfl-settings-one-time">
           <div className="rfl-settings-one-time-copy">
+            <h2>Login &amp; Security</h2>
+
+            <p>
+              Change the manager login email or password.
+            </p>
+          </div>
+
+          <Link
+            className="rfl-settings-link"
+            href="/manager/settings/security"
+          >
+            <span>Login &amp; Security</span>
+            <span aria-hidden="true">&gt;</span>
+          </Link>
+        </section>
+
+        <section className="rfl-settings-one-time">
+          <div className="rfl-settings-one-time-copy">
             <h2>One-Time Charges</h2>
 
             <p>

@@ -13,7 +13,12 @@ type PreviewRequestBody = {
   accountCode?: unknown;
   planId?: unknown;
   paymentMethod?: unknown;
+ unitNumber?: unknown;
 };
+
+function normalizeUnitNumber(value: string) {
+  return value.trim().toUpperCase();
+}
 
 function isPaymentMethod(
   value: unknown
@@ -43,10 +48,15 @@ export async function POST(request: Request) {
       ? body.accountCode.trim()
       : "";
 
-  const planId =
-    typeof body.planId === "string"
-      ? body.planId.trim()
-      : "";
+const planId =
+  typeof body.planId === "string"
+    ? body.planId.trim()
+    : "";
+
+const unitNumber =
+  typeof body.unitNumber === "string"
+    ? body.unitNumber.trim()
+    : "";
 
   if (!accountCode || !planId) {
     return NextResponse.json(
@@ -70,8 +80,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const business =
-    await getPublicCheckoutBusiness(accountCode);
+const normalizedUnitNumber =
+  normalizeUnitNumber(unitNumber);
+
+const business =
+  await getPublicCheckoutBusiness(
+    accountCode,
+    normalizedUnitNumber
+  );
 
   if (
     !business ||
@@ -122,10 +138,11 @@ export async function POST(request: Request) {
     })),
   };
 
-  const pricing = calculateCheckoutPricing({
-    plan: pricingPlan,
-    paymentMethod: body.paymentMethod,
-  });
+const pricing = calculateCheckoutPricing({
+  plan: pricingPlan,
+  paymentMethod: body.paymentMethod,
+  oneTimeCharges: business.oneTimeCharges,
+});
 
   return NextResponse.json({
     business: {

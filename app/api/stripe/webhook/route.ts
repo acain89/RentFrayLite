@@ -1,5 +1,6 @@
 import {
   CheckoutSessionStatus,
+  OneTimeChargeStatus,
   PaymentStatus,
   Prisma,
   SmsReceiptStatus,
@@ -323,16 +324,29 @@ async function markPaymentPaid({
   stripeEventId: string;
   stripeEventType: string;
 }) {
-  const existingPayment =
-    await prisma.payment.findUnique({
-      where: {
-        id: paymentId,
-      },
-    });
 
-  if (!existingPayment) {
-    return;
-  }
+const existingPayment =
+  await prisma.payment.findUnique({
+    where: {
+      id: paymentId,
+    },
+  });
+
+const checkoutSession =
+  checkoutSessionId
+    ? await prisma.checkoutSession.findUnique({
+        where: {
+          id: checkoutSessionId,
+        },
+        select: {
+          oneTimeChargeIds: true,
+        },
+      })
+    : null;
+
+if (!existingPayment) {
+  return;
+}
 
   if (existingPayment.status === PaymentStatus.PAID) {
     return;
@@ -401,6 +415,30 @@ async function markPaymentPaid({
       },
       update: {},
     });
+
+   const oneTimeChargeIds = Array.isArray(
+  checkoutSession?.oneTimeChargeIds
+)
+  ? checkoutSession.oneTimeChargeIds.filter(
+      (id): id is string =>
+        typeof id === "string"
+    )
+  : [];
+
+if (oneTimeChargeIds.length > 0) {
+  await tx.oneTimeCharge.updateMany({
+    where: {
+      id: {
+        in: oneTimeChargeIds,
+      },
+    },
+    data: {
+      status: OneTimeChargeStatus.PAID,
+      paymentId,
+      paidAt: now,
+    },
+  });
+}
 
     await tx.auditLog.create({
       data: {
