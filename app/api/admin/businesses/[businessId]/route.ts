@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/adminApi";
 import { prisma } from "@/lib/prisma";
 
@@ -8,14 +8,10 @@ type RouteContext = {
   }>;
 };
 
-type DeletePayload = {
-  accountCode?: unknown;
-};
-
 export async function DELETE(
-  request: NextRequest,
+  _request: Request,
   context: RouteContext
-) {
+): Promise<NextResponse> {
   const auth = await requireAdminApi();
 
   if (auth.response) {
@@ -31,15 +27,11 @@ export async function DELETE(
 
   const adminAccess = auth.session.adminAccess;
   const { businessId } = await context.params;
-  const body = (await request.json()) as DeletePayload;
-
-  const confirmation =
-    typeof body.accountCode === "string"
-      ? body.accountCode.trim().toUpperCase()
-      : "";
 
   const business = await prisma.business.findUnique({
-    where: { id: businessId },
+    where: {
+      id: businessId,
+    },
     select: {
       id: true,
       name: true,
@@ -54,52 +46,65 @@ export async function DELETE(
     );
   }
 
-  if (!business.accountCode || confirmation !== business.accountCode) {
-    return NextResponse.json(
-      { error: "The account code confirmation does not match." },
-      { status: 400 }
-    );
-  }
-
   await prisma.$transaction(async (tx) => {
     await tx.checkoutSession.deleteMany({
-      where: { businessId },
+      where: {
+        businessId,
+      },
     });
 
     await tx.oneTimeCharge.deleteMany({
-      where: { businessId },
+      where: {
+        businessId,
+      },
     });
 
     await tx.payment.deleteMany({
-      where: { businessId },
+      where: {
+        businessId,
+      },
     });
 
     await tx.auditLog.deleteMany({
-      where: { businessId },
+      where: {
+        businessId,
+      },
     });
 
     await tx.verificationToken.deleteMany({
-      where: { businessId },
+      where: {
+        businessId,
+      },
     });
 
     await tx.session.deleteMany({
-      where: { businessId },
+      where: {
+        businessId,
+      },
     });
 
     await tx.manager.deleteMany({
-      where: { businessId },
+      where: {
+        businessId,
+      },
     });
 
     await tx.stripeConnection.deleteMany({
-      where: { businessId },
+      where: {
+        businessId,
+      },
     });
 
     await tx.recurringPlan.deleteMany({
-      where: { businessId },
+      where: {
+        businessId,
+      },
     });
 
     await tx.business.delete({
-      where: { id: businessId },
+      where: {
+        id: businessId,
+      },
     });
 
     await tx.auditLog.create({
@@ -109,10 +114,12 @@ export async function DELETE(
         action: "BUSINESS_DELETED",
         targetType: "Business",
         targetId: businessId,
-        summary: `${business.name} (${business.accountCode}) permanently deleted`,
+        summary: `${business.name} (${business.accountCode ?? "No account code"}) permanently deleted`,
       },
     });
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+  });
 }

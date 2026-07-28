@@ -106,9 +106,6 @@ export default function AdminDashboardClient({
   const [credentialMessage, setCredentialMessage] = useState("");
   const [savingCredentials, setSavingCredentials] = useState(false);
 
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteCode, setDeleteCode] = useState("");
-  const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   const refreshDashboard = useCallback(async () => {
@@ -182,15 +179,13 @@ export default function AdminDashboardClient({
     }
   }
 
-  function chooseBusiness(business: BusinessSearchResult): void {
-    setSelected(business);
-    setNewEmail(business.manager?.email ?? "");
-    setNewPassword("");
-    setCredentialMessage("");
-    setDeleteOpen(false);
-    setDeleteCode("");
-    setDeleteError("");
-  }
+function chooseBusiness(business: BusinessSearchResult): void {
+  setSelected(business);
+  setNewEmail(business.manager?.email ?? "");
+  setNewPassword("");
+  setConfirmNewPassword("");
+  setCredentialMessage("");
+}
 
   async function saveCredentials(
     event: FormEvent<HTMLFormElement>
@@ -273,52 +268,45 @@ export default function AdminDashboardClient({
     }
   }
 
-  async function deleteBusiness(): Promise<void> {
-    if (!selected) return;
+async function deleteBusiness(): Promise<void> {
+  if (!selected) return;
 
-    setDeleting(true);
-    setDeleteError("");
+  setDeleting(true);
 
-    try {
-      const response = await fetch(
-        `/api/admin/businesses/${selected.id}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            accountCode: deleteCode,
-          }),
-        }
-      );
-
-      const data = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-      };
-
-      if (!response.ok) {
-        setDeleteError(data.error ?? "Delete failed.");
-        return;
+  try {
+    const response = await fetch(
+      `/api/admin/businesses/${selected.id}`,
+      {
+        method: "DELETE",
       }
+    );
 
-      setResults([]);
-      setSelected(null);
-      setQuery("");
-      setSearchError("");
-      setDeleteOpen(false);
-      setDeleteCode("");
-      await refreshDashboard();
-      window.requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
-      });
-    } catch {
-      setDeleteError("Unable to delete the account.");
-    } finally {
-      setDeleting(false);
+    const data = (await response.json()) as {
+      success?: boolean;
+      error?: string;
+    };
+
+    if (!response.ok) {
+      window.alert(data.error ?? "Delete failed.");
+      return;
     }
+
+    setResults([]);
+    setSelected(null);
+    setQuery("");
+    setSearchError("");
+
+    await refreshDashboard();
+
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+  } catch {
+    window.alert("Unable to delete the account.");
+  } finally {
+    setDeleting(false);
   }
+}
 
   async function logout(): Promise<void> {
     try {
@@ -543,7 +531,7 @@ export default function AdminDashboardClient({
               >
                 <strong>{business.name}</strong>
                 <span>
-                  {business.accountCode ?? "No account code"} Ã‚Â·{" "}
+                  {business.accountCode ?? "No account code"} ·{" "}
                   {business.manager?.email ?? business.contactEmail}
                 </span>
               </button>
@@ -699,83 +687,30 @@ export default function AdminDashboardClient({
             </section>
 
             <section className="rfl-admin-selected-section rfl-admin-danger-section">
-              <h2>Danger Zone</h2>
+  <h2>Danger Zone</h2>
 
-              <div className="rfl-admin-danger-zone">
-                <div>
-                  <h3>Delete Account</h3>
-                  <p>
-                    Permanently removes this business and its RFL data.
-                  </p>
-                </div>
+  <div className="rfl-admin-danger-zone">
+    <div>
+      <h3>Delete Account</h3>
+      <p>Permanently removes this business and its RFL data.</p>
+    </div>
 
-                {!deleteOpen ? (
-                  <button
-                    className="rfl-admin-danger-button"
-                    type="button"
-                    onClick={() => setDeleteOpen(true)}
-                    disabled={!selected.accountCode}
-                  >
-                    Delete Account
-                  </button>
-                ) : (
-                  <div className="rfl-admin-delete-confirmation">
-                    <p>
-                      Type <strong>{selected.accountCode}</strong> to
-                      confirm.
-                    </p>
+    <button
+      className="rfl-admin-danger-button"
+      type="button"
+      onClick={() => {
+        if (!window.confirm("Permanently delete this account?")) {
+          return;
+        }
 
-                    <input
-                      type="text"
-                      value={deleteCode}
-                      onChange={(event) => {
-                        setDeleteCode(
-                          event.target.value.toUpperCase()
-                        );
-                        setDeleteError("");
-                      }}
-                      placeholder={selected.accountCode ?? ""}
-                      autoComplete="off"
-                    />
-
-                    {deleteError ? (
-                      <p className="rfl-error" role="alert">
-                        {deleteError}
-                      </p>
-                    ) : null}
-
-                    <div className="rfl-admin-delete-actions">
-                      <button
-                        className="rfl-admin-secondary-button"
-                        type="button"
-                        onClick={() => {
-                          setDeleteOpen(false);
-                          setDeleteCode("");
-                          setDeleteError("");
-                        }}
-                        disabled={deleting}
-                      >
-                        Cancel
-                      </button>
-
-                      <button
-                        className="rfl-admin-danger-button"
-                        type="button"
-                        onClick={deleteBusiness}
-                        disabled={
-                          deleting ||
-                          deleteCode !== selected.accountCode
-                        }
-                      >
-                        {deleting
-                          ? "Deleting..."
-                          : "Permanently Delete"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
+        void deleteBusiness();
+      }}
+      disabled={deleting}
+    >
+      {deleting ? "Deleting..." : "Delete Account"}
+    </button>
+  </div>
+</section>
           </div>
         ) : null}
       </section>
