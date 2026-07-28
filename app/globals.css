@@ -4760,3 +4760,34 @@ input:focus-visible {
 .rfl-download-link {
   margin-top: 2px;
 }
+
+.rfl-admin-link {
+  position: fixed;
+  right: 20px;
+  bottom: 18px;
+  z-index: 20;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--rfl-text-soft);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.7;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.rfl-admin-link:hover,
+.rfl-admin-link:focus-visible {
+  color: var(--rfl-text);
+  opacity: 1;
+}
+
+.rfl-admin-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
