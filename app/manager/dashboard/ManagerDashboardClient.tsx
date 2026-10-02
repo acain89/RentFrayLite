@@ -6,12 +6,14 @@ import type {
   DashboardPaymentStatus,
 } from "@/lib/dashboard";
 import Link from "next/link";
+import type { PaymentReadiness } from "@/lib/paymentReadiness";
 
 type PaymentFilter =
   | "ALL"
   | DashboardPaymentStatus;
 
 type ManagerDashboardClientProps = {
+  readiness: PaymentReadiness;
   businessName: string;
   accountCode: string;
   managerName: string;
@@ -54,10 +56,17 @@ function statusLabel(
 
     case "FAILED":
       return "Failed";
+
+    case "RETURNED":
+      return "Returned";
+
+    case "DISPUTED":
+      return "Disputed";
   }
 }
 
 export default function ManagerDashboardClient({
+  readiness,
   businessName,
   accountCode,
   managerName,
@@ -130,6 +139,22 @@ useEffect(() => {
     [payments]
   );
 
+const returnedCount = useMemo(
+  () =>
+    payments.filter(
+      (payment) => payment.status === "RETURNED"
+    ).length,
+  [payments]
+);
+
+const disputedCount = useMemo(
+  () =>
+    payments.filter(
+      (payment) => payment.status === "DISPUTED"
+    ).length,
+  [payments]
+);
+
   const filteredPayments = useMemo(
     () =>
       filter === "ALL"
@@ -140,30 +165,42 @@ useEffect(() => {
     [filter, payments]
   );
 
-  const filters: Array<{
-    value: PaymentFilter;
-    label: string;
-  }> = [
-    {
-      value: "ALL",
-      label: "All",
-    },
-    {
-      value: "PAID",
-      label: "Paid",
-    },
-    {
-      value: "PENDING",
-      label: "Pending",
-    },
-    {
-      value: "FAILED",
-      label: "Failed",
-    },
-  ];
+const filters: Array<{
+  value: PaymentFilter;
+  label: string;
+}> = [
+  {
+    value: "ALL",
+    label: "All",
+  },
+  {
+    value: "PAID",
+    label: "Paid",
+  },
+  {
+    value: "PENDING",
+    label: "Pending",
+  },
+  {
+    value: "FAILED",
+    label: "Failed",
+  },
+  {
+    value: "RETURNED",
+    label: "Returned",
+  },
+  {
+    value: "DISPUTED",
+    label: "Disputed",
+  },
+];
 
   return (
     <main className="rfl-dashboard-page">
+      <aside aria-label="Payment readiness" role="status">
+        <strong>{readiness.title}</strong>
+        {readiness.reasons.map((reason) => <p key={reason.code}><Link href={reason.route}>{reason.message}</Link></p>)}
+      </aside>
       <header className="rfl-dashboard-header">
         <div>
           <p className="rfl-eyebrow">
@@ -230,42 +267,54 @@ useEffect(() => {
         </div>
       </section>
 
-      <section
-        className="rfl-dashboard-stats"
-        aria-label="Current billing cycle summary"
-      >
-        <article className="rfl-dashboard-stat rfl-dashboard-stat-primary">
-          <p>Collected</p>
-          <strong>{formatMoney(collectedCents)}</strong>
-          <span>Current billing cycle</span>
-        </article>
+     <section
+  className="rfl-dashboard-stats"
+  aria-label="Current billing cycle summary"
+>
+  <article className="rfl-dashboard-stat rfl-dashboard-stat-primary">
+    <p>Collected</p>
+    <strong>{formatMoney(collectedCents)}</strong>
+    <span>Current billing cycle</span>
+  </article>
 
-        <article className="rfl-dashboard-stat">
-          <p>Late Fees Collected</p>
-          <strong>
-            {formatMoney(lateFeesCollectedCents)}
-          </strong>
-          <span>Included in Collected</span>
-        </article>
+  <article className="rfl-dashboard-stat">
+    <p>Late Fees Collected</p>
+    <strong>
+      {formatMoney(lateFeesCollectedCents)}
+    </strong>
+    <span>Included in Collected</span>
+  </article>
 
-        <article className="rfl-dashboard-stat">
-          <p>Pending</p>
-          <strong>{pendingCount}</strong>
-          <span>Payments processing</span>
-        </article>
+  <article className="rfl-dashboard-stat">
+    <p>Pending</p>
+    <strong>{pendingCount}</strong>
+    <span>Payments processing</span>
+  </article>
 
-        <article className="rfl-dashboard-stat">
-          <p>Failed</p>
-          <strong>{failedCount}</strong>
-          <span>Payments requiring attention</span>
-        </article>
+  <article className="rfl-dashboard-stat">
+    <p>Failed</p>
+    <strong>{failedCount}</strong>
+    <span>Payments requiring attention</span>
+  </article>
 
-        <article className="rfl-dashboard-stat">
-          <p>Transactions</p>
-          <strong>{payments.length}</strong>
-          <span>Paid, pending, and failed</span>
-        </article>
-      </section>
+  <article className="rfl-dashboard-stat">
+    <p>Returned</p>
+    <strong>{returnedCount}</strong>
+    <span>Completed payments returned</span>
+  </article>
+
+  <article className="rfl-dashboard-stat">
+    <p>Disputed</p>
+    <strong>{disputedCount}</strong>
+    <span>Payments under dispute</span>
+  </article>
+
+  <article className="rfl-dashboard-stat">
+    <p>Transactions</p>
+    <strong>{payments.length}</strong>
+    <span>Current cycle payment activity</span>
+  </article>
+</section>
 
       <section className="rfl-dashboard-payments">
         <header className="rfl-dashboard-payments-header">

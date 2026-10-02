@@ -1,5 +1,10 @@
 "use client";
 
+import type {
+  PaymentMethod,
+  PaymentSourceType,
+  PaymentStatus,
+} from "@prisma/client";
 import Link from "next/link";
 import {
   useMemo,
@@ -7,32 +12,13 @@ import {
   type ChangeEvent,
 } from "react";
 
-type PaymentStatus =
-  | "CREATED"
-  | "CHECKOUT_STARTED"
-  | "PENDING"
-  | "PAID"
-  | "FAILED"
-  | "EXPIRED"
-  | "REFUNDED"
-  | "DISPUTED"
-  | "RETURNED";
-
-type PaymentMethod = "ACH" | "CARD" | null;
-
-type PaymentSourceType =
-  | "RECURRING_PLAN"
-  | "CATALOG_ITEM"
-  | "CUSTOM_POSTING";
-
-
 
 export type HistoryPayment = {
   id: string;
   sourceType: PaymentSourceType;
   sourceId: string | null;
   status: PaymentStatus;
-  paymentMethod: PaymentMethod;
+  paymentMethod: PaymentMethod | null;
 
   payerFirstName: string;
   payerLastName: string;
@@ -59,7 +45,6 @@ export type HistoryPayment = {
   paidAt: string | null;
   failedAt: string | null;
   expiredAt: string | null;
-  refundedAt: string | null;
   disputedAt: string | null;
   returnedAt: string | null;
 
@@ -125,14 +110,9 @@ function formatStatus(status: PaymentStatus): string {
 function formatSourceType(
   sourceType: PaymentSourceType
 ): string {
-  switch (sourceType) {
-    case "RECURRING_PLAN":
-      return "Recurring plan";
-    case "CATALOG_ITEM":
-      return "Product or service";
-    case "CUSTOM_POSTING":
-      return "Custom posting";
-  }
+  return sourceType === "RECURRING_PLAN"
+    ? "Recurring payment"
+    : "Legacy payment";
 }
 
 function csvEscape(value: string | number | null): string {
@@ -517,7 +497,6 @@ export default function ManagerHistoryClient({
                 Checkout started
               </option>
               <option value="EXPIRED">Expired</option>
-              <option value="REFUNDED">Refunded</option>
               <option value="DISPUTED">Disputed</option>
               <option value="RETURNED">Returned</option>
             </select>

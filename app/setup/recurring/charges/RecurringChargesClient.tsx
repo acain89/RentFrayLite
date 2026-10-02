@@ -328,6 +328,8 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
         .map((charge) => ({
           id:
             charge.existingIdsByTier[tier.recurringPlanId] ?? null,
+          sourceChargeId: Object.values(charge.existingIdsByTier)[0] ?? null,
+          logicalChargeKey: charge.clientKey,
 
           /*
            * The API returns clientKey with each saved charge.
@@ -336,9 +338,7 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
            */
           clientKey: `${charge.clientKey}:${tier.recurringPlanId}`,
 
-          sharedChargeGroupId: charge.appliesToAllTiers
-            ? charge.sharedChargeGroupId ?? charge.clientKey
-            : null,
+          sharedChargeGroupId: charge.sharedChargeGroupId,
 
           label: charge.label.trim(),
           amountCents: amountToCents(charge.amount),
@@ -426,9 +426,7 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
           return {
             ...charge,
             existingIdsByTier,
-            sharedChargeGroupId: charge.appliesToAllTiers
-              ? sharedChargeGroupId
-              : null,
+            sharedChargeGroupId,
           };
         }),
       );
@@ -494,6 +492,9 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
     return () => {
       window.clearTimeout(timer);
     };
+
+    // queueSave intentionally uses the latest render closure; autosave is serialized by saveChain.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [charges, initialTiers]);
 
   async function continueToBilling(): Promise<void> {

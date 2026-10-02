@@ -117,6 +117,7 @@ export async function PATCH(
         ...(passwordHash ? { passwordHash } : {}),
       },
     }),
+    prisma.session.deleteMany({ where: { managerId: business.manager.id } }),
     prisma.auditLog.create({
       data: {
         businessId,

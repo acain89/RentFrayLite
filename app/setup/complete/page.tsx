@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireManager } from "@/lib/auth";
+import { loadBusinessPaymentReadiness } from "@/lib/businessPaymentReadiness";
 
 export default async function SetupCompletePage() {
   const { business } = await requireManager();
@@ -9,6 +10,7 @@ export default async function SetupCompletePage() {
     redirect("/setup/continue");
   }
 
+  const current = await loadBusinessPaymentReadiness(business.id);
   return (
     <main className="rfl-setup-page">
       <section className="rfl-complete-card">
@@ -17,13 +19,13 @@ export default async function SetupCompletePage() {
         </div>
 
         <header className="rfl-complete-header">
-          <h1>You’re all set!</h1>
+          <h1>{current?.readiness.title ?? "Payment status unavailable"}</h1>
           <p>
-            Your account is ready to go. You can now start
-            accepting payments.
+            Your account setup is saved. Check your current payment status below.
           </p>
         </header>
 
+        {current?.readiness.reasons.map((reason) => <p key={reason.code}><Link href={reason.route}>{reason.message}</Link></p>)}
         <div className="rfl-complete-summary">
           <h2>What’s next?</h2>
 
@@ -45,7 +47,7 @@ export default async function SetupCompletePage() {
           <div>
             <strong>Start accepting payments</strong>
             <p>
-              Your connected payment account is ready.
+              {current?.readiness.ready ? "Your connected payment account is ready." : "Resolve the items above before accepting payments."}
             </p>
           </div>
         </div>

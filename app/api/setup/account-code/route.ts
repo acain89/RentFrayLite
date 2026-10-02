@@ -1,3 +1,4 @@
+import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
 import {
   BusinessStatus,
   Prisma,
@@ -6,7 +7,7 @@ import {
 } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { generateAvailableAccountCode } from "@/lib/accountCode";
-import { prisma } from "@/lib/prisma";
+import { loadBusinessPaymentReadiness } from "@/lib/businessPaymentReadiness";
 import { getCurrentSession } from "@/lib/session";
 import { accountCodeSchema } from "@/lib/validators";
 
@@ -16,7 +17,7 @@ export async function GET() {
   if (
     !session ||
     session.type !== SessionType.MANAGER ||
-    !session.business
+    !session.business || !session.manager || session.manager.businessId !== session.business.id
   ) {
     return NextResponse.json(
       { error: "Authentication required." },
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
     !session ||
     session.type !== SessionType.MANAGER ||
     !session.manager ||
-    !session.business
+    !session.business || session.manager.businessId !== session.business.id
   ) {
     return NextResponse.json(
       { error: "Authentication required." },
@@ -72,24 +73,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const stripeConnection =
-    await prisma.stripeConnection.findUnique({
-      where: {
-        businessId: session.business.id,
-      },
-      select: {
-        readyForLive: true,
-      },
-    });
-
-  if (!stripeConnection?.readyForLive) {
-    return NextResponse.json(
-      {
-        error:
-          "Complete the bank setup before choosing an account code.",
-      },
-      { status: 409 }
-    );
+  const current = await loadBusinessPaymentReadiness(session.business.id);
+  if (!current?.readiness.canChooseAccountCode) {
+    return NextResponse.json({ error: current?.readiness.reasons[0]?.message ?? "Complete payment setup before choosing an account code." }, { status: 409 });
   }
 
   let body: unknown;
@@ -121,10 +107,11 @@ export async function POST(request: Request) {
   const managerId = session.manager.id;
 
   try {
-    await prisma.$transaction([
-      prisma.business.update({
+    await withManagerMutation(session, async tx => {
+      await tx.business.update({
         where: {
           id: businessId,
+          accountCodeLockedAt: null,
         },
         data: {
           accountCode: parsed.data.accountCode,
@@ -133,8 +120,8 @@ export async function POST(request: Request) {
           setupCompletedAt: now,
           status: BusinessStatus.ACTIVE,
         },
-      }),
-      prisma.auditLog.create({
+      });
+      await tx.auditLog.create({
         data: {
           businessId,
           actorType: "MANAGER",
@@ -144,9 +131,10 @@ export async function POST(request: Request) {
           targetId: businessId,
           summary: `Account code permanently locked as ${parsed.data.accountCode}. Setup completed.`,
         },
-      }),
-    ]);
+      });
+    });
   } catch (error) {
+    if (error instanceof ManagerMutationUnauthorized) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     if (
       error instanceof
         Prisma.PrismaClientKnownRequestError &&
@@ -159,6 +147,10 @@ export async function POST(request: Request) {
         },
         { status: 409 }
       );
+    }
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      return NextResponse.json({ error: "The account code has already been locked. Refresh your account." }, { status: 409 });
     }
 
     console.error(

@@ -1,3 +1,4 @@
+import { reserveAdminLogin, recordAdminLoginOutcome, ADMIN_LOGIN_WINDOW_MS } from "@/lib/adminLoginThrottle";
 import { NextResponse } from "next/server";
 import {
   authenticateAdmin,
@@ -25,9 +26,23 @@ export async function POST(request: Request) {
     );
   }
 
+  let adminAttempt: string | null = null;
+  const isAdmin = !!body && typeof body === "object" && "type" in body && body.type === "ADMIN";
+  if (isAdmin) {
+    try { adminAttempt = await reserveAdminLogin(); } catch {
+      return NextResponse.json({ error: "Unable to sign in. Please try again later." }, { status: 503 });
+    }
+    if (!adminAttempt) return NextResponse.json({ error: "Too many administrator sign-in attempts. Try again later." }, {
+      status: 429, headers: { "Retry-After": String(ADMIN_LOGIN_WINDOW_MS / 1000) },
+    });
+  }
   const parsed = loginSchema.safeParse(body);
 
   if (!parsed.success) {
+    if (adminAttempt) {
+      await recordAdminLoginOutcome(adminAttempt, "FAILURE");
+      return NextResponse.json({ error: "Unable to sign in." }, { status: 401 });
+    }
     return NextResponse.json(
       {
         error:
@@ -58,6 +73,8 @@ export async function POST(request: Request) {
     await createManagerSession({
       managerId: manager.id,
       businessId: manager.businessId,
+      passwordHash: manager.passwordHash,
+      email: manager.email,
     });
 
     const setupRoute = getSetupRoute(manager.business);
@@ -74,15 +91,17 @@ export async function POST(request: Request) {
   const admin = await authenticateAdmin(parsed.data.code);
 
   if (!admin) {
+    await recordAdminLoginOutcome(adminAttempt!, "FAILURE");
     return NextResponse.json(
       {
-        error: "The admin code is incorrect.",
+        error: "Unable to sign in.",
       },
       { status: 401 }
     );
   }
 
-  await createAdminSession(admin.id);
+  await recordAdminLoginOutcome(adminAttempt!, "SUCCESS");
+  await createAdminSession(admin.id, admin.codeHash);
 
   return NextResponse.json({
     authenticated: true,

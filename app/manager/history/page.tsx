@@ -5,30 +5,10 @@ import { getSetupRoute } from "@/lib/setupProgress";
 import ManagerHistoryClient, {
   type HistoryPayment,
 } from "./ManagerHistoryClient";
+import {
+  getPaymentTimestamp,
+} from "@/lib/dashboard";
 
-function getPaymentTimestamp(payment: {
-  paidAt: Date | null;
-  pendingAt: Date | null;
-  failedAt: Date | null;
-  expiredAt: Date | null;
-  refundedAt: Date | null;
-  disputedAt: Date | null;
-  returnedAt: Date | null;
-  checkoutStartedAt: Date | null;
-  createdAt: Date;
-}): Date {
-  return (
-    payment.paidAt ??
-    payment.pendingAt ??
-    payment.failedAt ??
-    payment.expiredAt ??
-    payment.refundedAt ??
-    payment.disputedAt ??
-    payment.returnedAt ??
-    payment.checkoutStartedAt ??
-    payment.createdAt
-  );
-}
 
 export default async function ManagerHistoryPage() {
   const { manager, business } = await requireManager();
@@ -78,7 +58,6 @@ export default async function ManagerHistoryPage() {
       paidAt: true,
       failedAt: true,
       expiredAt: true,
-      refundedAt: true,
       disputedAt: true,
       returnedAt: true,
 
@@ -125,7 +104,6 @@ export default async function ManagerHistoryPage() {
     paidAt: payment.paidAt?.toISOString() ?? null,
     failedAt: payment.failedAt?.toISOString() ?? null,
     expiredAt: payment.expiredAt?.toISOString() ?? null,
-    refundedAt: payment.refundedAt?.toISOString() ?? null,
     disputedAt: payment.disputedAt?.toISOString() ?? null,
     returnedAt: payment.returnedAt?.toISOString() ?? null,
 

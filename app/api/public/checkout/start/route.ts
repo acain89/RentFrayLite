@@ -1,35 +1,21 @@
+import { normalizeStripeLineItems, isStripeCheckoutTransportWithinLimit, STRIPE_CHECKOUT_PAYMENT_MAX_LINE_ITEMS } from "@/lib/stripeCheckoutTransport";
 import {
   CheckoutSessionStatus,
   PaymentMethod,
-  PaymentSourceType,
-  PaymentStatus,
 } from "@prisma/client";
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
+import { getBusinessPaymentReadiness, readinessBusinessInclude } from "@/lib/businessPaymentReadiness";
+import { getConfigurationReasons } from "@/lib/paymentReadiness";
 import { getStripeClient } from "@/lib/stripe";
+import { grantPaymentResultAccess, getPaymentResultAccessToken, verifyPaymentResultAccessToken } from "@/lib/paymentResultAccess";
 import { Prisma } from "@prisma/client";
-
-const DUPLICATE_PAYMENT_BLOCK_STATUSES: PaymentStatus[] = [
-  PaymentStatus.CREATED,
-  PaymentStatus.CHECKOUT_STARTED,
-  PaymentStatus.PENDING,
-  PaymentStatus.PAID,
-  PaymentStatus.DISPUTED,
-];
-
-const CHECKOUT_LOCK_TIMEOUT_MS = 30 * 60 * 1000;
+import { isLinkedCheckoutResume, reserveCheckoutAttempt } from "@/lib/checkoutRetry";
+import { expireUnstartedCheckout, writeCheckoutLifecycle } from "@/lib/checkoutLifecycle";
 
 type StartCheckoutRequest = {
   checkoutSessionId?: unknown;
-};
-
-type StoredLineItem = {
-  label?: unknown;
-  name?: unknown;
-  description?: unknown;
-  amountCents?: unknown;
-  amount?: unknown;
 };
 
 function getApplicationOrigin(request: Request): string {
@@ -38,89 +24,6 @@ function getApplicationOrigin(request: Request): string {
     .replace(/\/$/, "");
 
   return configuredOrigin || new URL(request.url).origin;
-}
-
-function normalizeStripeLineItems(
-  storedLineItems: unknown,
-  fallbackAmountCents: number
-): Stripe.Checkout.SessionCreateParams.LineItem[] {
-  if (!Array.isArray(storedLineItems)) {
-    return [
-      {
-        quantity: 1,
-        price_data: {
-          currency: "usd",
-          unit_amount: fallbackAmountCents,
-          product_data: {
-            name: "Payment",
-          },
-        },
-      },
-    ];
-  }
-
-  const lineItems = storedLineItems
-    .map((item): Stripe.Checkout.SessionCreateParams.LineItem | null => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-
-      const storedItem = item as StoredLineItem;
-
-      const name =
-        typeof storedItem.label === "string"
-          ? storedItem.label.trim()
-          : typeof storedItem.name === "string"
-            ? storedItem.name.trim()
-            : typeof storedItem.description === "string"
-              ? storedItem.description.trim()
-              : "";
-
-      const amountCents =
-        typeof storedItem.amountCents === "number"
-          ? Math.round(storedItem.amountCents)
-          : typeof storedItem.amount === "number"
-            ? Math.round(storedItem.amount * 100)
-            : 0;
-
-      if (!name || amountCents <= 0) {
-        return null;
-      }
-
-      return {
-        quantity: 1,
-        price_data: {
-          currency: "usd",
-          unit_amount: amountCents,
-          product_data: {
-            name,
-          },
-        },
-      };
-    })
-    .filter(
-      (
-        item
-      ): item is Stripe.Checkout.SessionCreateParams.LineItem =>
-        item !== null
-    );
-
-  if (lineItems.length === 0) {
-    return [
-      {
-        quantity: 1,
-        price_data: {
-          currency: "usd",
-          unit_amount: fallbackAmountCents,
-          product_data: {
-            name: "Payment",
-          },
-        },
-      },
-    ];
-  }
-
-  return lineItems;
 }
 
 export async function POST(request: Request) {
@@ -165,18 +68,7 @@ export async function POST(request: Request) {
     where: {
       id: checkoutSession.businessId,
     },
-    select: {
-      id: true,
-      name: true,
-      accountCode: true,
-      isActive: true,
-      stripeConnection: {
-        select: {
-          stripeAccountId: true,
-          readyForLive: true,
-        },
-      },
-    },
+    include: readinessBusinessInclude,
   });
 
   if (!business) {
@@ -186,20 +78,11 @@ export async function POST(request: Request) {
     );
   }
 
-  if (checkoutSession.expiresAt <= new Date()) {
-    if (
-      checkoutSession.status !==
-      CheckoutSessionStatus.EXPIRED
-    ) {
-      await prisma.checkoutSession.update({
-        where: {
-          id: checkoutSession.id,
-        },
-        data: {
-          status: CheckoutSessionStatus.EXPIRED,
-        },
-      });
-    }
+  const linkedResume = isLinkedCheckoutResume(checkoutSession);
+  // Local review TTL controls unstarted checkouts. For an already linked
+  // attempt, only B1's current Stripe observation decides collectibility.
+  if (checkoutSession.expiresAt <= new Date() && !linkedResume) {
+    await expireUnstartedCheckout(prisma, checkoutSession.id);
 
     return NextResponse.json(
       { error: "Checkout session expired." },
@@ -209,7 +92,8 @@ export async function POST(request: Request) {
 
   if (
     checkoutSession.status !==
-    CheckoutSessionStatus.REVIEWED
+    CheckoutSessionStatus.REVIEWED &&
+    checkoutSession.status !== CheckoutSessionStatus.CHECKOUT_STARTED && !linkedResume
   ) {
     return NextResponse.json(
       {
@@ -242,7 +126,7 @@ export async function POST(request: Request) {
 
   if (
     !stripeConnection ||
-    !stripeConnection.readyForLive
+    getConfigurationReasons(business).length > 0
   ) {
     return NextResponse.json(
       {
@@ -253,140 +137,70 @@ export async function POST(request: Request) {
     );
   }
 
-  let payment =
-    checkoutSession.paymentId
-      ? await prisma.payment.findUnique({
-          where: {
-            id: checkoutSession.paymentId,
-          },
-        })
-      : null;
+  const stripeLineItems = normalizeStripeLineItems(checkoutSession.lineItems);
+  const stripeLineItemsTotalCents = stripeLineItems?.reduce(
+    (total, item) => total + item.quantity * item.price_data.unit_amount,
+    0
+  ) ?? null;
 
   if (
-    payment &&
-    payment.stripeCheckoutSessionId
+    !stripeLineItems ||
+    !Number.isSafeInteger(checkoutSession.totalCents) ||
+    checkoutSession.totalCents < 0 ||
+    !Number.isSafeInteger(stripeLineItemsTotalCents) ||
+    stripeLineItemsTotalCents !== checkoutSession.totalCents
   ) {
+    console.error("Checkout line-item reconciliation failed:", {
+      checkoutSessionId: checkoutSession.id,
+      expectedTotalCents: checkoutSession.totalCents,
+      stripeLineItemsTotalCents,
+    });
+
     return NextResponse.json(
-      {
-        error:
-          "Stripe Checkout has already been started for this payment.",
-      },
-      { status: 409 }
+      { error: "Unable to open secure payment checkout. Please begin a new payment." },
+      { status: 500 }
     );
   }
 
-   const duplicatePayment = await prisma.payment.findFirst({
-  where: {
-    businessId: checkoutSession.businessId,
-    sourceType: PaymentSourceType.RECURRING_PLAN,
-    sourceId: checkoutSession.planId,
-    billingCycle: checkoutSession.billingCycle,
-    referenceLabel: checkoutSession.unitNumber,
-    status: {
-      in: DUPLICATE_PAYMENT_BLOCK_STATUSES,
-    },
-    ...(payment ? { id: { not: payment.id } } : {}),
-  },
-  orderBy: {
-    createdAt: "desc",
-  },
-});
+  // Reject unsupported transport BEFORE reserving a Payment or calling Stripe.
+  if (!isStripeCheckoutTransportWithinLimit(stripeLineItems)) {
+    console.error("Stripe Checkout transport exceeds payment-mode line-item capacity. Review snapshot types/transport projection:", {
+      checkoutSessionId: checkoutSession.id, transportRows: stripeLineItems.length,
+      maximumRows: STRIPE_CHECKOUT_PAYMENT_MAX_LINE_ITEMS,
+    });
+    return NextResponse.json({ error: "Unable to prepare secure payment checkout. Please contact the business." }, { status: 500 });
+  }
+  const readiness = await getBusinessPaymentReadiness(business, checkoutSession.planId);
+  if (!readiness.ready) {
+    return NextResponse.json({ error: "Business is not accepting payments." }, { status: 409 });
+  }
 
-if (duplicatePayment) {
-  switch (duplicatePayment.status) {
-    case PaymentStatus.PAID:
-      return NextResponse.json(
-        {
-          error: "This billing cycle has already been paid.",
-        },
-        { status: 409 }
-      );
-
-    case PaymentStatus.PENDING:
-      return NextResponse.json(
-        {
-          error: "A payment for this billing cycle is already processing.",
-        },
-        { status: 409 }
-      );
-
-    case PaymentStatus.DISPUTED:
-      return NextResponse.json(
-        {
-          error: "This payment is currently under dispute.",
-        },
-        { status: 409 }
-      );
-
-    case PaymentStatus.CREATED:
-    case PaymentStatus.CHECKOUT_STARTED: {
-      const lockStartedAt =
-        duplicatePayment.checkoutStartedAt ??
-        duplicatePayment.createdAt;
-
-      if (
-        Date.now() - lockStartedAt.getTime() <
-        CHECKOUT_LOCK_TIMEOUT_MS
-      ) {
-        return NextResponse.json(
-          {
-            error:
-              "A payment is already being started for this billing cycle.",
-          },
-          { status: 409 }
-        );
-      }
-
-      break;
+  const stripe = getStripeClient();
+  let reservation;
+  try {
+    reservation = await reserveCheckoutAttempt(
+      prisma, stripe, checkoutSession, business.name, stripeConnection.stripeAccountId,
+      async (stripeSessionId, originalCheckoutId) => verifyPaymentResultAccessToken(
+        (await getPaymentResultAccessToken(stripeSessionId)) ?? "", stripeSessionId, originalCheckoutId
+      )
+    );
+  } catch (error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ error: "A payment for this billing cycle already exists." }, { status: 409 });
     }
+    console.error("Unable to safely verify or reserve the existing payment:", error);
+    return NextResponse.json({ error: "Unable to safely verify the existing payment. Please try again." }, { status: 500 });
   }
-}
-
-  if (!payment) {
-    payment = await prisma.payment.create({
-      data: {
-        businessId: checkoutSession.businessId,
-        sourceType:
-          PaymentSourceType.RECURRING_PLAN,
-        sourceId: checkoutSession.planId,
-        status: PaymentStatus.CREATED,
-        paymentMethod:
-          checkoutSession.paymentMethod,
-        payerFirstName:
-          checkoutSession.firstName,
-        payerLastName:
-          checkoutSession.lastName,
-        payerPhone: checkoutSession.phone,
-        referenceLabel:
-          checkoutSession.unitNumber,
-        itemDescription: `${business.name} payment`,
-        lineItemsSnapshot:
-          checkoutSession.lineItems as Prisma.InputJsonValue,
-        subtotalCents:
-          checkoutSession.subtotalCents,
-        platformFeeCents:
-          checkoutSession.platformFeeCents,
-        totalChargedCents:
-          checkoutSession.totalCents,
-        businessProceedsCents:
-          checkoutSession.subtotalCents,
-        billingCycle:
-          checkoutSession.billingCycle,
-      },
-    });
-
-    await prisma.checkoutSession.update({
-      where: {
-        id: checkoutSession.id,
-      },
-      data: {
-        paymentId: payment.id,
-      },
-    });
+  if (reservation.kind === "block") {
+    return NextResponse.json({ error: reservation.error }, { status: 409 });
   }
+  if (reservation.kind === "resume") {
+    await grantPaymentResultAccess(reservation.payment.stripeCheckoutSessionId!, reservation.checkoutId);
+    return NextResponse.json({ ok: true, checkoutUrl: reservation.url, paymentId: reservation.payment.id });
+  }
+  const payment = reservation.payment;
 
   const origin = getApplicationOrigin(request);
-  const stripe = getStripeClient();
 
   const metadata: Record<string, string> = {
     product: "RentFrayLite",
@@ -397,28 +211,10 @@ if (duplicatePayment) {
     billingCycle: checkoutSession.billingCycle,
   };
 
-  const stripeLineItems =
-    normalizeStripeLineItems(
-      checkoutSession.lineItems,
-      checkoutSession.subtotalCents
-    );
-
-  if (checkoutSession.platformFeeCents > 0) {
-    stripeLineItems.push({
-      quantity: 1,
-      price_data: {
-        currency: "usd",
-        unit_amount:
-          checkoutSession.platformFeeCents,
-        product_data: {
-          name: "Platform Service Fee",
-        },
-      },
-    });
-  }
+  let stripeCheckoutSession: Stripe.Checkout.Session;
 
   try {
-    const stripeCheckoutSession =
+    stripeCheckoutSession =
       await stripe.checkout.sessions.create(
         {
           mode: "payment",
@@ -429,13 +225,13 @@ if (duplicatePayment) {
               : ["card"],
           line_items: stripeLineItems,
           success_url:
-            `${origin}/${encodeURIComponent(
+            `${origin}/payment/success?session_id={CHECKOUT_SESSION_ID}&accountCode=${encodeURIComponent(
               checkoutSession.accountCode
-            )}/success?session_id={CHECKOUT_SESSION_ID}`,
+            )}`,
           cancel_url:
             `${origin}/${encodeURIComponent(
               checkoutSession.accountCode
-            )}/review?id=${encodeURIComponent(
+            )}/review?session=${encodeURIComponent(
               checkoutSession.id
             )}`,
           client_reference_id: payment.id,
@@ -454,67 +250,22 @@ if (duplicatePayment) {
           idempotencyKey: `rfl-payment-${payment.id}`,
         }
       );
-
-    if (!stripeCheckoutSession.url) {
-      throw new Error(
-        "Stripe did not return a Checkout URL."
-      );
-    }
-
-    const now = new Date();
-
-    await prisma.$transaction([
-      prisma.payment.update({
-        where: {
-          id: payment.id,
-        },
-        data: {
-          status:
-            PaymentStatus.CHECKOUT_STARTED,
-          stripeCheckoutSessionId:
-            stripeCheckoutSession.id,
-          checkoutStartedAt: now,
-        },
-      }),
-
-      prisma.checkoutSession.update({
-        where: {
-          id: checkoutSession.id,
-        },
-        data: {
-          status:
-            CheckoutSessionStatus.CHECKOUT_STARTED,
-          paymentId: payment.id,
-          stripeCheckoutSessionId:
-            stripeCheckoutSession.id,
-        },
-      }),
-    ]);
-
-    return NextResponse.json({
-      ok: true,
-      checkoutUrl: stripeCheckoutSession.url,
-      paymentId: payment.id,
-    });
   } catch (error) {
     console.error(
       "Unable to create Stripe Checkout Session:",
       error
     );
 
-    await prisma.payment.update({
-      where: {
-        id: payment.id,
-      },
-      data: {
-        status: PaymentStatus.FAILED,
-        failedAt: new Date(),
-        failureMessage:
-          error instanceof Error
-            ? error.message
-            : "Unable to create Stripe Checkout Session.",
-      },
-    });
+    try {
+      const result = await writeCheckoutLifecycle(prisma, payment.id, checkoutSession.id, {
+        kind: "failed", message: error instanceof Error ? error.message : "Unable to create Stripe Checkout Session.",
+      });
+      if (result.kind === "advanced") {
+        return NextResponse.json({ error: "This payment has already advanced. Please check its payment result.", paymentId: result.payment.id, paymentStatus: result.payment.status }, { status: 409 });
+      }
+    } catch (persistenceError) {
+      console.error("Unable to safely record checkout creation failure:", persistenceError);
+    }
 
     return NextResponse.json(
       {
@@ -524,4 +275,48 @@ if (duplicatePayment) {
       { status: 500 }
     );
   }
+
+  try {
+    const result = await writeCheckoutLifecycle(prisma, payment.id, checkoutSession.id, {
+      kind: "started", stripeCheckoutId: stripeCheckoutSession.id,
+    });
+    if (result.kind !== "started") {
+      return NextResponse.json({ error: "This payment has already advanced. Please check its payment result.", paymentId: result.payment.id, paymentStatus: result.payment.status }, { status: 409 });
+    }
+  } catch (error) {
+    console.error(
+      `Stripe Checkout Session ${stripeCheckoutSession.id} was created, but RentFrayLite could not persist the checkout state:`,
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Secure payment checkout was created, but RentFrayLite could not finish preparing it. Please try again.",
+      },
+      { status: 500 }
+    );
+  }
+
+  if (!stripeCheckoutSession.url) {
+    console.error(
+      `Stripe Checkout Session ${stripeCheckoutSession.id} did not include a checkout URL.`
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Unable to open secure payment checkout. Please try again.",
+      },
+      { status: 500 }
+    );
+  }
+
+  await grantPaymentResultAccess(stripeCheckoutSession.id, checkoutSession.id);
+
+  return NextResponse.json({
+    ok: true,
+    checkoutUrl: stripeCheckoutSession.url,
+    paymentId: payment.id,
+  });
 }

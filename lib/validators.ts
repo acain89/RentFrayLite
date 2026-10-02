@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isStrongAdminCredential } from "@/lib/adminCredential";
 
 export const managerLoginSchema = z.object({
   type: z.literal("MANAGER"),
@@ -15,10 +16,7 @@ export const managerLoginSchema = z.object({
 
 export const adminLoginSchema = z.object({
   type: z.literal("ADMIN"),
-  code: z
-    .string()
-    .trim()
-    .regex(/^\d{6}$/, "Enter the 6-digit admin code."),
+  code: z.string().refine(isStrongAdminCredential, "Unable to sign in."),
 });
 
 export const loginSchema = z.discriminatedUnion("type", [

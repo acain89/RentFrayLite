@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useState } from "react";
@@ -222,7 +222,7 @@ export default function RecurringReviewClient({
 
           <p>
            You can edit any of these settings later from your Manager Dashboard.
-           The only permanent setting is your Account Code, which you'll choose after connecting Stripe.
+           The only permanent setting is your Account Code, which you&apos;ll choose after connecting Stripe.
           </p>
         </aside>
 

@@ -104,6 +104,8 @@ export async function POST(request: Request) {
   await createManagerSession({
     managerId: result.manager.id,
     businessId: result.business.id,
+    passwordHash: result.manager.passwordHash,
+    email: result.manager.email,
   });
 
   return NextResponse.json(

@@ -65,20 +65,19 @@ export default function AdminLoginPage() {
         </header>
 
         <form className="rfl-auth-form" onSubmit={handleSubmit}>
-          <label htmlFor="adminCode">6-digit admin code</label>
+          <label htmlFor="adminCode">Administrator password or passphrase</label>
 
           <input
             id="adminCode"
             name="code"
             type="password"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            pattern="\d{6}"
+            autoComplete="current-password"
+            maxLength={72}
+            minLength={16}
             required
             value={code}
             onChange={(event) => {
-              setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+              setCode(event.target.value);
               setError("");
             }}
           />

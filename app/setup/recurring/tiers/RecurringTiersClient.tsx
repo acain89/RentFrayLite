@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -6,6 +6,7 @@ import {
   useSearchParams,
 } from "next/navigation";
 import SetupProgress from "@/components/setup/SetupProgress";
+import { MAX_PAYMENT_AMOUNT_CENTS } from "@/lib/platformFees";
 
 type TierDraft = {
   id: string | null;
@@ -85,12 +86,22 @@ function validateTiers(tiers: TierDraft[]): string | null {
     return "Each rent tier must have a unique name.";
   }
 
+  const amountValues = tiers.map((tier) =>
+    amountToCents(tier.amount)
+  );
+
+  if (amountValues.some((amount) => amount === null)) {
+    return "Enter a valid monthly amount for every tier.";
+  }
+
   if (
-    tiers.some(
-      (tier) => amountToCents(tier.amount) === null
+    amountValues.some(
+      (amount) =>
+        amount !== null &&
+        amount > MAX_PAYMENT_AMOUNT_CENTS
     )
   ) {
-    return "Enter a valid monthly amount for every tier.";
+    return "Monthly amount cannot exceed $5,000.";
   }
 
   return null;
@@ -207,11 +218,9 @@ const settingsMode =
     if (!response.ok || !data.saved || !data.tiers) {
       setSaveStatus("error");
 
-      if (advance) {
-        setError(
-          data.error ?? "Unable to save the rent tiers."
-        );
-      }
+      setError(
+        data.error ?? "Unable to save the rent tiers."
+      );
 
       return {
         error:
@@ -278,9 +287,12 @@ const settingsMode =
     const validationError = validateTiers(tiers);
 
     if (validationError) {
-      setSaveStatus("idle");
+      setSaveStatus("error");
+      setError(validationError);
       return;
     }
+
+    setError("");
 
     const snapshot = tiers.map((tier) => ({ ...tier }));
     const snapshotRevision = revision.current;
@@ -292,6 +304,9 @@ const settingsMode =
     return () => {
       window.clearTimeout(timer);
     };
+
+    // queueSave intentionally uses the latest render closure; autosave is serialized by saveChain.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tiers]);
 
   async function continueToCharges(): Promise<void> {
@@ -333,7 +348,7 @@ const settingsMode =
   saveStatus === "saving"
     ? "Saving..."
     : saveStatus === "error"
-      ? "Couldn’t save"
+      ? "Could not save"
       : "Changes save automatically";
 
   return (
@@ -350,7 +365,7 @@ const settingsMode =
   <p className="rfl-eyebrow">
     {settingsMode
       ? "Settings"
-      : "Recurring setup · Step 1 of 4"}
+      : "Recurring setup Â· Step 1 of 4"}
   </p>
 
   <p
@@ -517,3 +532,5 @@ const settingsMode =
     </main>
   );
 }
+
+

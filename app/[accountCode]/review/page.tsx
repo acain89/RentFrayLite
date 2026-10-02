@@ -1,3 +1,5 @@
+import { isLinkedCheckoutResume } from "@/lib/checkoutRetry";
+import { getPaymentResultAccessToken, verifyPaymentResultAccessToken } from "@/lib/paymentResultAccess";
 import { CheckoutSessionStatus } from "@prisma/client";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -105,19 +107,29 @@ export default async function ReviewPage({
     notFound();
   }
 
+  const linkedResume = isLinkedCheckoutResume(checkoutSession);
+  // Render only the stored attempt for its bound browser. Continue performs
+  // Stripe/readiness reconciliation; rendering does not inspect or mutate Stripe.
+  if (linkedResume && !verifyPaymentResultAccessToken(
+    (await getPaymentResultAccessToken(checkoutSession.stripeCheckoutSessionId!)) ?? "",
+    checkoutSession.stripeCheckoutSessionId!, checkoutSession.id,
+  )) notFound();
+
   const now = new Date();
 
   if (
     checkoutSession.expiresAt.getTime() <=
-    now.getTime()
+    now.getTime() && !linkedResume
   ) {
     if (
       checkoutSession.status ===
       CheckoutSessionStatus.CREATED
     ) {
-      await prisma.checkoutSession.update({
+      await prisma.checkoutSession.updateMany({
         where: {
           id: checkoutSession.id,
+          status: CheckoutSessionStatus.CREATED, paymentId: null, stripeCheckoutSessionId: null,
+          expiresAt: { lte: now },
         },
         data: {
           status:
@@ -152,16 +164,16 @@ export default async function ReviewPage({
     );
   }
 
-  const allowedStatuses: CheckoutSessionStatus[] =
-    [
-      CheckoutSessionStatus.CREATED,
-      CheckoutSessionStatus.REVIEWED,
-    ];
+ const allowedStatuses: CheckoutSessionStatus[] = [
+  CheckoutSessionStatus.CREATED,
+  CheckoutSessionStatus.REVIEWED,
+  CheckoutSessionStatus.CHECKOUT_STARTED,
+];
 
   if (
     !allowedStatuses.includes(
       checkoutSession.status
-    )
+    ) && !linkedResume
   ) {
     return (
       <main className="rfl-public-checkout-page">
@@ -207,9 +219,10 @@ export default async function ReviewPage({
     checkoutSession.status ===
     CheckoutSessionStatus.CREATED
   ) {
-    await prisma.checkoutSession.update({
+    await prisma.checkoutSession.updateMany({
       where: {
         id: checkoutSession.id,
+          status: CheckoutSessionStatus.CREATED, paymentId: null, stripeCheckoutSessionId: null,
       },
       data: {
         status:

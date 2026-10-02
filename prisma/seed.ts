@@ -1,20 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { requireStrongAdminCredential } from "../lib/adminCredential";
 
 const prisma = new PrismaClient();
 
 async function main(): Promise<void> {
-  const adminCode = process.env.SEED_ADMIN_CODE?.trim();
-
-  if (!adminCode) {
-    throw new Error(
-      "SEED_ADMIN_CODE is required. Refusing to seed production without an explicit admin code."
-    );
-  }
-
-  if (!/^\d{6}$/.test(adminCode)) {
-    throw new Error("SEED_ADMIN_CODE must be exactly six digits.");
-  }
+  const adminCode = requireStrongAdminCredential(process.env.SEED_ADMIN_CODE);
 
   const adminCodeHash = await bcrypt.hash(adminCode, 12);
 

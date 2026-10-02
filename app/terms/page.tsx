@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
@@ -23,7 +23,7 @@ export default function TermsPage() {
             These Terms of Service govern access to and use of
             RentFrayLite, including its websites, dashboards, payment
             pages, checkout tools, communications, and related services
-            (collectively, the "Service").
+            (collectively, the &quot;Service&quot;).
           </p>
           <p>
             By creating an account, connecting a payment account, using
@@ -47,11 +47,11 @@ export default function TermsPage() {
         <section>
           <h2>3. What RentFrayLite Provides</h2>
           <p>
-            RentFrayLite provides software that allows participating
-            businesses and organizations ("Businesses") to configure
-            recurring payment options, one-time charges, billing rules,
-            and public payment pages. Customers and other payers
-            ("Payers") may use those pages to submit one-time payments.
+        RentFrayLite provides software that allows participating
+        businesses and organizations (&quot;Businesses&quot;) to configure
+        recurring payment amounts, billing rules, and public payment
+        pages. Customers and other payers (&quot;Payers&quot;) may use those
+        pages to submit payments toward recurring obligations.
           </p>
           <p>
             RentFrayLite is not a bank, landlord, property manager,
@@ -99,7 +99,7 @@ export default function TermsPage() {
             Payment availability and timing may be affected by banks,
             card networks, ACH rules, Stripe review, holidays, technical
             interruptions, disputes, returns, or other circumstances
-            outside RentFrayLite's control.
+            outside RentFrayLite&apos;s control.
           </p>
         </section>
 
@@ -139,10 +139,9 @@ export default function TermsPage() {
           <p>
             Businesses are solely responsible for configuring payment
             amounts, recurring charges, due dates, grace periods, late
-            fees, one-time charges, descriptions, and customer
-            identifiers. Businesses must ensure those settings and
-            charges comply with contracts, disclosures, notices, and
-            applicable laws.
+            fees, descriptions, and customer identifiers. Businesses must 
+            ensure those settings and charges comply with contracts, 
+            disclosures, notices, and applicable laws.
           </p>
           <p>
             RentFrayLite calculates amounts from the settings supplied
@@ -165,21 +164,6 @@ export default function TermsPage() {
             fees may be allocated by Stripe or RentFrayLite as permitted
             by the applicable Stripe agreements, payment-method rules,
             and law.
-          </p>
-        </section>
-
-        <section>
-          <h2>10. Refunds and Payment Corrections</h2>
-          <p>
-            RentFrayLite does not currently provide a self-service
-            refund tool. A Payer seeking a refund or correction should
-            first contact the Business that received the payment.
-          </p>
-          <p>
-            RentFrayLite does not guarantee that a Business will approve
-            a refund. Any refund, credit, adjustment, or off-platform
-            resolution is the responsibility of the Business unless
-            otherwise required by law.
           </p>
         </section>
 
@@ -268,12 +252,12 @@ export default function TermsPage() {
           <h2>17. Disclaimer of Warranties</h2>
           <p>
             TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SERVICE IS
-            PROVIDED "AS IS" AND "AS AVAILABLE." RENTFRAYLITE DISCLAIMS
+            PROVIDED &quot;AS IS&quot; AND &quot;AS AVAILABLE.&quot; RENTFRAYLITE DISCLAIMS
             IMPLIED WARRANTIES, INCLUDING MERCHANTABILITY, FITNESS FOR
             A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
           </p>
           <p>
-            RENTFRAYLITE DOES NOT WARRANT THAT A BUSINESS'S CHARGES,
+            RENTFRAYLITE DOES NOT WARRANT THAT A BUSINESS&apos;S CHARGES,
             BILLING RULES, CONTRACTS, OR COLLECTION PRACTICES ARE LAWFUL
             OR ENFORCEABLE.
           </p>
@@ -290,7 +274,7 @@ export default function TermsPage() {
             RETURNS, DISPUTES, FRAUD, OR UNAUTHORIZED ACCOUNT USE.
           </p>
           <p>
-            TO THE MAXIMUM EXTENT PERMITTED BY LAW, RENTFRAYLITE'S TOTAL
+            TO THE MAXIMUM EXTENT PERMITTED BY LAW, RENTFRAYLITE&apos;S TOTAL
             LIABILITY ARISING FROM THE SERVICE WILL NOT EXCEED THE
             PLATFORM SERVICE FEES RETAINED BY RENTFRAYLITE FROM THE
             AFFECTED USER DURING THE THREE MONTHS BEFORE THE EVENT
@@ -308,7 +292,7 @@ export default function TermsPage() {
             To the extent permitted by law, a Business agrees to defend,
             indemnify, and hold RentFrayLite harmless from claims,
             losses, liabilities, and expenses arising from the
-            Business's charges, customer relationships, agreements,
+            Business&apos;s charges, customer relationships, agreements,
             disclosures, taxes, legal violations, account activity, or
             misuse of the Service.
           </p>

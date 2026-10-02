@@ -1,5 +1,6 @@
+import { isActiveManagerSession } from "@/lib/sessionAuthority";
 import { createHash, randomBytes } from "node:crypto";
-import { SessionType } from "@prisma/client";
+import { BusinessStatus, Prisma, SessionType } from "@prisma/client";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
@@ -45,39 +46,52 @@ export async function clearSessionCookie(): Promise<void> {
 export async function createManagerSession(input: {
   managerId: string;
   businessId: string;
+  passwordHash: string;
+  email: string;
 }): Promise<void> {
   const token = createRawSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
 
-  await prisma.session.create({
-    data: {
-      tokenHash: hashSessionToken(token),
-      type: SessionType.MANAGER,
-      managerId: input.managerId,
-      businessId: input.businessId,
-      expiresAt,
-    },
+  await prisma.$transaction(async tx => {
+    // Serialize issuance with credential updates, so a login authenticated before
+    // a reset cannot recreate a session after that reset has revoked all tokens.
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Manager" WHERE "id" = ${input.managerId} FOR UPDATE`);
+    const manager = await tx.manager.findUnique({ where: { id: input.managerId }, include: { business: true } });
+    if (!manager?.isActive || manager.businessId !== input.businessId || !manager.business.isActive ||
+      manager.business.status === BusinessStatus.DISABLED || manager.passwordHash !== input.passwordHash || manager.email !== input.email) {
+      throw new Error("Manager authentication changed. Please log in again.");
+    }
+    await tx.session.create({ data: {
+      tokenHash: hashSessionToken(token), type: SessionType.MANAGER,
+      managerId: input.managerId, businessId: input.businessId, expiresAt,
+    } });
   });
 
   await setSessionCookie(token, expiresAt);
 }
 
 export async function createAdminSession(
-  adminAccessId: string
+  adminAccessId: string, codeHash: string
 ): Promise<void> {
   const token = createRawSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
 
-  await prisma.session.create({
-    data: {
-      tokenHash: hashSessionToken(token),
-      type: SessionType.ADMIN,
-      adminAccessId,
-      expiresAt,
-    },
+  await prisma.$transaction(async tx => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "AdminAccess" WHERE "id" = ${adminAccessId} FOR UPDATE`);
+    const admin = await tx.adminAccess.findUnique({ where: { id: adminAccessId } });
+    if (!admin?.isActive || admin.codeHash !== codeHash) throw new Error("Administrator authentication changed. Please log in again.");
+    await tx.session.create({ data: { tokenHash: hashSessionToken(token), type: SessionType.ADMIN, adminAccessId, expiresAt } });
   });
 
   await setSessionCookie(token, expiresAt);
+}
+
+async function clearInvalidCookie(): Promise<void> {
+  try { await clearSessionCookie(); } catch (error) {
+    // Server Components cannot mutate cookies. Authorization still fails there;
+    // Route Handlers clear the browser cookie without weakening server revocation.
+    if (!(error instanceof Error) || !error.message.startsWith("Cookies can only be modified in a Server Action or Route Handler.")) throw error;
+  }
 }
 
 export async function getCurrentSession() {
@@ -104,23 +118,29 @@ export async function getCurrentSession() {
   });
 
   if (!session) {
+    await clearInvalidCookie();
     return null;
   }
 
-  if (session.expiresAt <= new Date()) {
-    await prisma.session.delete({
+  const activePrincipal = session.type === SessionType.MANAGER
+    ? isActiveManagerSession(session)
+    : session.type === SessionType.ADMIN && session.adminAccess?.isActive &&
+      session.adminAccessId === session.adminAccess.id && !session.managerId && !session.businessId;
+  if (session.expiresAt <= new Date() || !activePrincipal) {
+    await prisma.session.deleteMany({
       where: {
         id: session.id,
       },
     });
 
+    await clearInvalidCookie();
     return null;
   }
 
   const renewalThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   if (session.lastUsedAt < renewalThreshold) {
-    await prisma.session.update({
+    const renewed = await prisma.session.updateMany({
       where: {
         id: session.id,
       },
@@ -128,6 +148,7 @@ export async function getCurrentSession() {
         lastUsedAt: new Date(),
       },
     });
+    if (renewed.count !== 1) { await clearInvalidCookie(); return null; }
   }
 
   return session;

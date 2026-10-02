@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
@@ -58,7 +58,7 @@ export default function SecurityPage() {
             <p>
               A RentFrayLite checkout authorizes one payment only. The
               platform does not create automatic or recurring debits
-              from a payer's account.
+              from a payer&apos;s account.
             </p>
           </article>
 

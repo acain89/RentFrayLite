@@ -1,3 +1,8 @@
+
+import {
+  formatBillingCycleLabel as formatBillingCycleLabelFromCalendar,
+  getBillingCycle,
+} from "@/lib/billingCalendar";
 import {
   PaymentMethod,
   PaymentStatus,
@@ -7,7 +12,9 @@ import {
 export type DashboardPaymentStatus =
   | "PAID"
   | "PENDING"
-  | "FAILED";
+  | "FAILED"
+  | "RETURNED"
+  | "DISPUTED";
 
 export type DashboardPayment = {
   id: string;
@@ -25,32 +32,13 @@ type LineItemRecord = Record<string, unknown>;
 export function getCurrentBillingCycle(
   date = new Date()
 ): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(
-    2,
-    "0"
-  );
-
-  return `${year}-${month}`;
+  return getBillingCycle(date);
 }
 
 export function formatBillingCycleLabel(
   billingCycle: string
 ): string {
-  const match = /^(\d{4})-(\d{2})$/.exec(billingCycle);
-
-  if (!match) {
-    return billingCycle;
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(Date.UTC(year, month - 1, 1)));
+  return formatBillingCycleLabelFromCalendar(billingCycle);
 }
 
 function asRecord(value: unknown): LineItemRecord | null {
@@ -193,6 +181,12 @@ export function getDashboardStatus(
     case PaymentStatus.FAILED:
       return "FAILED";
 
+    case PaymentStatus.RETURNED:
+      return "RETURNED";
+
+    case PaymentStatus.DISPUTED:
+      return "DISPUTED";
+
     default:
       return null;
   }
@@ -203,12 +197,18 @@ export function getPaymentTimestamp(input: {
   paidAt: Date | null;
   pendingAt: Date | null;
   failedAt: Date | null;
+  expiredAt?: Date | null;
+  disputedAt?: Date | null;
+  returnedAt?: Date | null;
   checkoutStartedAt: Date | null;
   createdAt: Date;
 }): Date {
   switch (input.status) {
-    case PaymentStatus.PAID:
-      return input.paidAt ?? input.createdAt;
+    case PaymentStatus.CREATED:
+      return input.createdAt;
+
+    case PaymentStatus.CHECKOUT_STARTED:
+      return input.checkoutStartedAt ?? input.createdAt;
 
     case PaymentStatus.PENDING:
       return (
@@ -217,8 +217,28 @@ export function getPaymentTimestamp(input: {
         input.createdAt
       );
 
+    case PaymentStatus.PAID:
+      return input.paidAt ?? input.createdAt;
+
     case PaymentStatus.FAILED:
       return input.failedAt ?? input.createdAt;
+
+    case PaymentStatus.EXPIRED:
+      return input.expiredAt ?? input.createdAt;
+
+    case PaymentStatus.DISPUTED:
+      return (
+        input.disputedAt ??
+        input.paidAt ??
+        input.createdAt
+      );
+
+    case PaymentStatus.RETURNED:
+      return (
+        input.returnedAt ??
+        input.paidAt ??
+        input.createdAt
+      );
 
     default:
       return input.createdAt;

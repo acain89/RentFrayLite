@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
@@ -192,7 +192,7 @@ export default function PrivacyPage() {
             information about its customers. Each Business is
             responsible for its own privacy notices, legal basis,
             disclosures, retention practices, and responses to customer
-            requests. RentFrayLite is not responsible for a Business's
+            requests. RentFrayLite is not responsible for a Business&apos;s
             separate privacy practices.
           </p>
         </section>
@@ -256,7 +256,7 @@ export default function PrivacyPage() {
         </section>
 
         <section>
-          <h2>13. Children's Privacy</h2>
+          <h2>13. Children&apos;s Privacy</h2>
           <p>
             The Service is intended for adults and business use. It is
             not directed to children under 13, and we do not knowingly

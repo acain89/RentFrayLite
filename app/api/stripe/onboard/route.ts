@@ -1,3 +1,4 @@
+import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
 import { SessionType } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -40,15 +41,16 @@ export async function GET(request: Request) {
   try {
     const stripe = getStripeClient();
 
-    const accountLink = await stripe.accountLinks.create({
+    const accountLink = await withManagerMutation(session, async () => stripe.accountLinks.create({
       account: connection.stripeAccountId,
       refresh_url: `${origin}/api/stripe/onboard`,
       return_url: `${origin}/setup/stripe?returned=1`,
       type: "account_onboarding",
-    });
+    }, { timeout: 5000, maxNetworkRetries: 0 }));
 
     return NextResponse.redirect(accountLink.url);
   } catch (error) {
+    if (error instanceof ManagerMutationUnauthorized) return NextResponse.redirect(new URL("/login/manager", origin));
     console.error("Unable to refresh Stripe onboarding:", error);
 
     return NextResponse.redirect(

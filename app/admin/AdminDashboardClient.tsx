@@ -283,6 +283,7 @@ async function deleteBusiness(): Promise<void> {
 
     const data = (await response.json()) as {
       success?: boolean;
+      message?: string;
       error?: string;
     };
 
@@ -291,6 +292,7 @@ async function deleteBusiness(): Promise<void> {
       return;
     }
 
+    window.alert(data.message ?? "Business removed.");
     setResults([]);
     setSelected(null);
     setQuery("");
@@ -691,15 +693,15 @@ async function deleteBusiness(): Promise<void> {
 
   <div className="rfl-admin-danger-zone">
     <div>
-      <h3>Delete Account</h3>
-      <p>Permanently removes this business and its RFL data.</p>
+      <h3>Remove Account</h3>
+      <p>Businesses with payment or checkout history are deactivated. Financial history is retained, and existing Stripe payments can still settle. Businesses without that history are deleted.</p>
     </div>
 
     <button
       className="rfl-admin-danger-button"
       type="button"
       onClick={() => {
-        if (!window.confirm("Permanently delete this account?")) {
+        if (!window.confirm("Remove this business? Payment or checkout history requires deactivation instead of deletion. Existing Stripe payments can still settle.")) {
           return;
         }
 
@@ -707,7 +709,7 @@ async function deleteBusiness(): Promise<void> {
       }}
       disabled={deleting}
     >
-      {deleting ? "Deleting..." : "Delete Account"}
+      {deleting ? "Removing..." : "Remove Account"}
     </button>
   </div>
 </section>

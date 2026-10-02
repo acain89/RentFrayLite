@@ -7,12 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum OneTimeChargeStatus {
-  PENDING
-  PAID
-  CANCELLED
-}
-
 enum BusinessStatus {
   SETUP
   ACTIVE
@@ -47,7 +41,6 @@ enum PaymentStatus {
   PAID
   FAILED
   EXPIRED
-  REFUNDED
   DISPUTED
   RETURNED
 }
@@ -59,8 +52,6 @@ enum PaymentMethod {
 
 enum PaymentSourceType {
   RECURRING_PLAN
-  CATALOG_ITEM
-  CUSTOM_POSTING
 }
 
 enum SessionType {
@@ -124,7 +115,6 @@ model Business {
   auditLogs          AuditLog[]
   verificationTokens VerificationToken[]
   sessions           Session[]
-  oneTimeCharges     OneTimeCharge[]
 
   @@index([status])
   @@index([contactEmail])
@@ -193,7 +183,6 @@ model CheckoutSession {
   totalCents            Int
 
   lineItems        Json
-  oneTimeChargeIds Json?
 
   dueDate     DateTime
   graceEndsAt DateTime
@@ -261,33 +250,6 @@ model RecurringCharge {
   @@index([endsAfterBillingCycle])
 }
 
-model OneTimeCharge {
-  id         String @id @default(cuid())
-  businessId String
-
-  unitNumber           String
-  normalizedUnitNumber String
-
-  label       String
-  amountCents Int
-
-  status OneTimeChargeStatus @default(PENDING)
-
-  paymentId   String?
-  paidAt      DateTime?
-  cancelledAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  payment  Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-
-  @@index([businessId, status])
-  @@index([businessId, normalizedUnitNumber, status])
-  @@index([paymentId])
-}
-
 model Payment {
   id         String            @id @default(cuid())
   businessId String
@@ -322,7 +284,6 @@ model Payment {
   paidAt            DateTime?
   failedAt          DateTime?
   expiredAt         DateTime?
-  refundedAt        DateTime?
   disputedAt        DateTime?
   returnedAt        DateTime?
 
@@ -334,7 +295,6 @@ model Payment {
 
   business       Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
   smsReceipt     SmsReceipt?
-  oneTimeCharges OneTimeCharge[]
 
   @@index([businessId, createdAt])
   @@index([businessId, status])

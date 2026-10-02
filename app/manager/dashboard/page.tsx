@@ -11,6 +11,7 @@ import {
 } from "@/lib/dashboard";
 import { prisma } from "@/lib/prisma";
 import { getSetupRoute } from "@/lib/setupProgress";
+import { loadBusinessPaymentReadiness } from "@/lib/businessPaymentReadiness";
 import ManagerDashboardClient from "./ManagerDashboardClient";
 
 export default async function ManagerDashboardPage() {
@@ -22,6 +23,8 @@ export default async function ManagerDashboardPage() {
     redirect("/setup/continue");
   }
 
+  const current = await loadBusinessPaymentReadiness(business.id);
+  if (!current) redirect("/login/manager");
   const billingCycle = getCurrentBillingCycle();
 
   const paymentRecords = await prisma.payment.findMany({
@@ -29,23 +32,19 @@ export default async function ManagerDashboardPage() {
       businessId: business.id,
       billingCycle,
       status: {
-        in: ["PAID", "PENDING", "FAILED"],
-      },
+  in: [
+    "PAID",
+    "PENDING",
+    "FAILED",
+    "RETURNED",
+    "DISPUTED",
+  ],
+},
     },
-    orderBy: [
-      {
-        paidAt: "desc",
-      },
-      {
-        pendingAt: "desc",
-      },
-      {
-        failedAt: "desc",
-      },
-      {
-        createdAt: "desc",
-      },
-    ],
+orderBy: {
+  updatedAt: "desc",
+},
+
     select: {
       id: true,
       status: true,
@@ -55,11 +54,14 @@ export default async function ManagerDashboardPage() {
       referenceLabel: true,
       itemDescription: true,
       lineItemsSnapshot: true,
-      subtotalCents: true,
+      subtotalCents: true, 
       paidAt: true,
       pendingAt: true,
       failedAt: true,
+      disputedAt: true,
+      returnedAt: true,
       checkoutStartedAt: true,
+      updatedAt: true,
       createdAt: true,
     },
   });
@@ -88,12 +90,9 @@ export default async function ManagerDashboardPage() {
             payment.referenceLabel?.trim() ||
             payment.itemDescription,
           amountCents: payment.subtotalCents,
-          lateFeeCents:
-            status === "PAID"
-              ? getLateFeeCents(
-                  payment.lineItemsSnapshot
-                )
-              : 0,
+         lateFeeCents: getLateFeeCents(
+          payment.lineItemsSnapshot
+          ),
           paymentMethod: getPaymentMethodLabel(
             payment.paymentMethod
           ),
@@ -104,6 +103,7 @@ export default async function ManagerDashboardPage() {
 
   return (
     <ManagerDashboardClient
+      readiness={current.readiness}
       businessName={business.name}
       accountCode={business.accountCode ?? "—"}
       managerName={

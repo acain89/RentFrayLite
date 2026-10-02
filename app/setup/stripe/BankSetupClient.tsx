@@ -1,12 +1,15 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import type { PaymentReadiness } from "@/lib/paymentReadiness";
 import { useRouter } from "next/navigation";
 import SetupProgress from "@/components/setup/SetupProgress";
 import type { StripeConnectionStatus } from "@/lib/stripeConnection";
 
 type BankSetupClientProps = {
   initialStatus: StripeConnectionStatus;
+  readiness: PaymentReadiness | null;
   highestReachedStep: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   returnedFromStripe: boolean;
   initialError: string | null;
@@ -19,6 +22,7 @@ type ConnectResponse = {
 
 export default function BankSetupClient({
   initialStatus,
+  readiness,
   highestReachedStep,
   returnedFromStripe,
   initialError,
@@ -53,7 +57,7 @@ export default function BankSetupClient({
   }
 
   function continueToAccountCode(): void {
-    router.push("/setup/account-code");
+    router.push(readiness?.ready ? "/manager/dashboard" : "/setup/account-code");
     router.refresh();
   }
 
@@ -66,17 +70,20 @@ export default function BankSetupClient({
         />
 
         <p className="rfl-eyebrow">Step 6 of 7</p>
+        {readiness ? <aside aria-label="Payment readiness"><strong>{readiness.title}</strong>
+          {readiness.reasons.map((reason) => <p key={reason.code}><Link href={reason.route}>{reason.message}</Link></p>)}
+        </aside> : null}
 
         <header className="rfl-setup-header">
           <h1>
-            {initialStatus.readyForLive
+            {readiness?.canChooseAccountCode
               ? "Bank account connected!"
               : initialStatus.exists
                 ? "Finish connecting your bank"
                 : "Connect your bank"}
           </h1>
 
-          {!initialStatus.readyForLive ? (
+          {!readiness?.canChooseAccountCode ? (
             <>
               <p>
                 Stripe securely connects your bank account so you can receive
@@ -94,15 +101,15 @@ export default function BankSetupClient({
           ) : null}
         </header>
 
-        {initialStatus.readyForLive ? (
+        {readiness?.canChooseAccountCode ? (
           <div className="rfl-bank-success">
-            <span aria-hidden="true">✓</span>
+            <span aria-hidden="true">âœ“</span>
 
             <div>
               <strong>Bank account connected</strong>
 
               <p>
-                Your bank account has been connected successfully. You're ready
+                Your bank account has been connected successfully. You&apos;re ready
                 to choose your permanent Account Code.
               </p>
             </div>
@@ -111,7 +118,7 @@ export default function BankSetupClient({
           <>
             <div className="rfl-bank-benefits">
               <div>
-                <span aria-hidden="true">✓</span>
+                <span aria-hidden="true">âœ“</span>
 
                 <p>
                   <strong>Secure verification</strong>
@@ -120,7 +127,7 @@ export default function BankSetupClient({
               </div>
 
               <div>
-                <span aria-hidden="true">✓</span>
+                <span aria-hidden="true">âœ“</span>
 
                 <p>
                   <strong>Direct deposits</strong>
@@ -129,7 +136,7 @@ export default function BankSetupClient({
               </div>
             </div>
 
-            {returnedFromStripe && !initialStatus.readyForLive ? (
+            {returnedFromStripe && !readiness?.canChooseAccountCode ? (
               <div className="rfl-bank-notice">
                 <strong>Stripe still needs more information.</strong>
 
@@ -158,13 +165,13 @@ export default function BankSetupClient({
         ) : null}
 
         <div className="rfl-bank-actions">
-          {initialStatus.readyForLive ? (
+          {readiness?.canChooseAccountCode ? (
             <button
               className="rfl-primary-button"
               type="button"
               onClick={continueToAccountCode}
             >
-              Continue to Account Code
+              {readiness?.ready ? "Go to Dashboard" : "Continue to Account Code"}
             </button>
           ) : (
             <button

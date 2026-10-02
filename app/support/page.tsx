@@ -33,12 +33,12 @@ export default function SupportPage() {
 
         <div className="rfl-info-callout">
           <h2>Payment questions</h2>
-          <p>
-            For questions about why an amount was charged, a late fee,
-            rent, service, product, one-time charge, refund, or account
-            balance, contact the Business shown on the payment page
-            first. The Business controls the underlying charge.
-          </p>
+        <p>
+      For questions about a payment amount, recurring charge,
+      late fee, or account balance, contact the Business shown
+      on the payment page first. The Business controls its
+      payment amounts and billing rules.
+        </p>
         </div>
 
         <Link className="rfl-info-home-link" href="/">

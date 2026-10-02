@@ -1,22 +1,17 @@
-import {
-  BusinessStatus,
-  OneTimeChargeStatus,
-  SetupStep,
-} from "@prisma/client";
+import { getBusinessPaymentReadiness, readinessBusinessInclude } from "@/lib/businessPaymentReadiness";
 import {
   ACCOUNT_CODE_PATTERN,
   normalizeAccountCode,
 } from "@/lib/accountCode";
 import { prisma } from "@/lib/prisma";
 
-
 export async function getPublicCheckoutBusiness(
-  rawAccountCode: string,
-  normalizedUnitNumber?: string
+  rawAccountCode: string
 ) {
-  const accountCode = normalizeAccountCode(
-    decodeURIComponent(rawAccountCode)
-  );
+  let input: string;
+  try { input = decodeURIComponent(rawAccountCode).trim().toUpperCase(); } catch { return null; }
+  if (!/^[A-Z]{2}-?\d{4}$/.test(input)) return null;
+  const accountCode = normalizeAccountCode(input);
 
   if (!ACCOUNT_CODE_PATTERN.test(accountCode)) {
     return null;
@@ -26,89 +21,10 @@ export async function getPublicCheckoutBusiness(
     where: {
       accountCode,
     },
-    select: {
-      id: true,
-      name: true,
-      accountCode: true,
-      status: true,
-      setupStep: true,
-      setupCompletedAt: true,
-      isActive: true,
-
-      stripeConnection: {
-        select: {
-          readyForLive: true,
-          chargesEnabled: true,
-          payoutsEnabled: true,
-        },
-      },
-
-       oneTimeCharges: {
-  where: {
-   status: OneTimeChargeStatus.PENDING,
-    ...(normalizedUnitNumber
-      ? {
-          normalizedUnitNumber,
-        }
-      : {}),
-  },
-  orderBy: {
-    createdAt: "asc",
-  },
-  select: {
-    id: true,
-    label: true,
-    amountCents: true,
-  },
-},
-
-      recurringPlans: {
-        where: {
-          isActive: true,
-        },
-        orderBy: {
-          sortOrder: "asc",
-        },
-        select: {
-          id: true,
-          name: true,
-          baseAmountCents: true,
-          dueDay: true,
-          gracePeriodDays: true,
-          initialLateFeeCents: true,
-          dailyLateFeeCents: true,
-          dailyLateFeeMaxDays: true,
-
-          charges: {
-            where: {
-              isActive: true,
-            },
-            orderBy: {
-              sortOrder: "asc",
-            },
-            select: {
-              id: true,
-              label: true,
-              amountCents: true,
-              effectiveBillingCycle: true,
-              endsAfterBillingCycle: true,
-            },
-          },
-        },
-      },
-    },
+    include: readinessBusinessInclude,
   });
 
-  if (
-    !business ||
-    !business.isActive ||
-    business.status !== BusinessStatus.ACTIVE ||
-    business.setupStep !== SetupStep.COMPLETE ||
-    !business.setupCompletedAt
-  ) {
-    return null;
-  }
-
+  if (!business || !(await getBusinessPaymentReadiness(business)).ready) return null;
   return business;
 }
 

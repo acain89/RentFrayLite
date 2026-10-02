@@ -1,6 +1,7 @@
-import { redirect } from "next/navigation";
 import { requireManager } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { loadBusinessPaymentReadiness } from "@/lib/businessPaymentReadiness";
+import { getHighestSetupStage } from "@/lib/setupProgress";
 import {
   emptyStripeConnectionStatus,
   syncStripeConnection,
@@ -17,7 +18,7 @@ type BankSetupPageProps = {
 export default async function BankSetupPage({
   searchParams,
 }: BankSetupPageProps) {
-  const { business } = await requireManager();
+  const { business, session } = await requireManager();
   const parameters = await searchParams;
 
   const connection = await prisma.stripeConnection.findUnique({
@@ -33,21 +34,25 @@ export default async function BankSetupPage({
     try {
       status = await syncStripeConnection(
         business.id,
-        connection.stripeAccountId
+        connection.stripeAccountId,
+        session,
       );
     } catch (error) {
       console.error("Unable to synchronize Stripe account:", error);
 
       synchronizationError =
-        "We couldn’t check your Stripe status. Please try again.";
+        "We couldn't check your Stripe status. Please try again.";
     }
   }
 
-  const highestReachedStep = status.readyForLive ? 7 : 6;
+  const current = await loadBusinessPaymentReadiness(business.id);
+  const highestReachedStep = business.setupCompletedAt || getHighestSetupStage(business.setupStep) === 7 ||
+    current?.readiness.canChooseAccountCode ? 7 : 6;
 
   return (
     <BankSetupClient
       initialStatus={status}
+      readiness={current?.readiness ?? null}
       highestReachedStep={highestReachedStep}
       returnedFromStripe={parameters.returned === "1"}
       initialError={

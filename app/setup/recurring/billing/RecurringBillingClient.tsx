@@ -334,6 +334,9 @@ export default function RecurringBillingClient({
     return () => {
       window.clearTimeout(timer);
     };
+
+    // queueSave intentionally uses the latest render closure; autosave is serialized by saveChain.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rules, sameRulesForAll]);
 
   async function continueToReview(): Promise<void> {

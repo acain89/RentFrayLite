@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireManager } from "@/lib/auth";
+import { loadBusinessPaymentReadiness } from "@/lib/businessPaymentReadiness";
 import {
   getSetupResumeDetails,
   getSetupRoute,
@@ -9,13 +10,17 @@ import {
 export default async function ContinueSetupPage() {
   const { business } = await requireManager();
 
-  const route = getSetupRoute(business);
+  const current = await loadBusinessPaymentReadiness(business.id);
+  const savedRoute = getSetupRoute(business);
+  const route = current && savedRoute !== "/manager/dashboard" &&
+    (business.setupStep === "CONNECT_STRIPE" || business.setupStep === "CHOOSE_ACCOUNT_CODE")
+    ? current.readiness.actionRoute : savedRoute;
 
   if (route === "/manager/dashboard") {
     redirect("/manager/dashboard");
   }
 
-  const details = getSetupResumeDetails(business);
+  const details = { ...getSetupResumeDetails(business), route };
 
   return (
     <main className="rfl-setup-page">

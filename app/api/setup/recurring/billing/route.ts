@@ -1,4 +1,5 @@
-import {
+import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
+﻿import {
   SessionType,
   SetupStep,
 } from "@prisma/client";
@@ -6,6 +7,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/session";
+import {
+  validateRecurringPaymentConfiguration,
+} from "@/lib/recurringValidation";
 
 const billingRuleSchema = z
   .object({
@@ -63,7 +67,7 @@ export async function PUT(request: Request) {
     !session ||
     session.type !== SessionType.MANAGER ||
     !session.manager ||
-    !session.business
+    !session.business || session.manager.businessId !== session.business.id
   ) {
     return NextResponse.json(
       { error: "Authentication required." },
@@ -97,6 +101,7 @@ export async function PUT(request: Request) {
 
   const businessId = session.business.id;
   const managerId = session.manager.id;
+  const setupAlreadyCompleted = Boolean(session.business.setupCompletedAt);
 
   const plans = await prisma.recurringPlan.findMany({
     where: {
@@ -108,6 +113,16 @@ export async function PUT(request: Request) {
     },
     select: {
       id: true,
+      name: true,
+      baseAmountCents: true,
+      charges: {
+        where: {
+          isActive: true,
+        },
+        select: {
+          amountCents: true,
+        },
+      },
     },
   });
 
@@ -126,6 +141,49 @@ export async function PUT(request: Request) {
       { status: 400 }
     );
   }
+
+
+ for (const rule of parsed.data.rules) {
+  const plan = plans.find(
+    (item) => item.id === rule.recurringPlanId
+  );
+
+  if (!plan) {
+    return NextResponse.json(
+      { error: "One or more rent tiers are invalid." },
+      { status: 400 }
+    );
+  }
+
+  const recurringChargeCents =
+    plan.charges.reduce(
+      (total, charge) =>
+        total + charge.amountCents,
+      0
+    );
+
+  const validation =
+    validateRecurringPaymentConfiguration({
+      planName: plan.name,
+      baseAmountCents: plan.baseAmountCents,
+      recurringChargeCents,
+      initialLateFeeCents:
+        rule.initialLateFeeCents,
+      dailyLateFeeCents:
+        rule.dailyLateFeeCents,
+      dailyLateFeeMaxDays:
+        rule.dailyLateFeeMaxDays,
+    });
+
+  if (!validation.ok) {
+    return NextResponse.json(
+      {
+        error: validation.error,
+      },
+      { status: 400 }
+    );
+  }
+}
 
   if (parsed.data.sameRulesForAll) {
     const firstRule = parsed.data.rules[0];
@@ -155,7 +213,7 @@ export async function PUT(request: Request) {
   }
 
   try {
-    await prisma.$transaction(async (transaction) => {
+    await withManagerMutation(session,async (transaction) => {
       for (const rule of parsed.data.rules) {
         await transaction.recurringPlan.update({
           where: {
@@ -173,7 +231,7 @@ export async function PUT(request: Request) {
         });
       }
 
-      if (parsed.data.advance) {
+      if (parsed.data.advance && !setupAlreadyCompleted) {
         await transaction.business.update({
           where: {
             id: businessId,
@@ -205,7 +263,8 @@ export async function PUT(request: Request) {
         ? "/setup/recurring/review"
         : undefined,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof ManagerMutationUnauthorized) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     return NextResponse.json(
       { error: "Unable to save the billing rules." },
       { status: 500 }

@@ -1,7 +1,9 @@
+import { withManagerMutation, type ManagerMutationIdentity } from "@/lib/managerMutation";
+import type { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
-import { SetupStep } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getStripeClient } from "@/lib/stripe";
+import { getStripeMode, readStripeReadinessFacts } from "@/lib/businessPaymentReadiness";
+import { getStripeReadinessReasons } from "@/lib/paymentReadiness";
 
 export type StripeConnectionStatus = {
   exists: boolean;
@@ -32,12 +34,12 @@ function readRequirements(account: Stripe.Account): string[] {
 
 export async function syncStripeConnection(
   businessId: string,
-  stripeAccountId: string
+  stripeAccountId: string,
+  authority?: ManagerMutationIdentity,
 ): Promise<StripeConnectionStatus> {
-  const stripe = getStripeClient();
-  const account = await stripe.accounts.retrieve(stripeAccountId);
+  const { account, facts } = await readStripeReadinessFacts(stripeAccountId);
 
-  if (account.deleted) {
+  if (Object.hasOwn(account, "deleted")) {
     throw new Error(
       "The connected Stripe account is no longer available."
     );
@@ -48,13 +50,10 @@ export async function syncStripeConnection(
   const chargesEnabled = account.charges_enabled;
   const payoutsEnabled = account.payouts_enabled;
   const onboardingComplete = account.details_submitted;
-  const requirementsDue = outstandingRequirements.length > 0;
+  const requirementsDue = facts.restricted;
 
-  const readyForLive =
-    chargesEnabled &&
-    payoutsEnabled &&
-    onboardingComplete &&
-    !requirementsDue;
+  const readyForLive = getStripeMode() === "live" &&
+    getStripeReadinessReasons(facts, getStripeMode(), process.env.NODE_ENV === "production").length === 0;
 
   const requirementsSummary =
     outstandingRequirements.length > 0
@@ -63,7 +62,7 @@ export async function syncStripeConnection(
           .join(", ")
       : null;
 
-  await prisma.$transaction(async (transaction) => {
+  const persist = async (transaction: Prisma.TransactionClient) => {
     await transaction.stripeConnection.upsert({
       where: {
         businessId,
@@ -91,17 +90,15 @@ export async function syncStripeConnection(
       },
     });
 
-    if (readyForLive) {
-      await transaction.business.update({
-        where: {
-          id: businessId,
-        },
-        data: {
-          setupStep: SetupStep.CHOOSE_ACCOUNT_CODE,
-        },
-      });
-    }
-  });
+  };
+  if (authority) {
+    if (authority.businessId !== businessId) throw new Error("Authentication required.");
+    await withManagerMutation(authority, persist);
+  } else {
+    // Internal provider-fact refresh is not a manager command. The manager page
+    // always supplies authority; refresh never activates a disabled business.
+    await prisma.$transaction(persist);
+  }
 
   return {
     exists: true,

@@ -2431,6 +2431,19 @@ input:focus-visible {
   color: #78847e;
 }
 
+.rfl-payment-result-breakdown { margin-top: 20px; }
+.rfl-payment-result-summary strong { min-width: 0; overflow-wrap: anywhere; }
+.rfl-payment-result-actions { display: grid; gap: 12px; margin-top: 24px; }
+.rfl-payment-result-actions a { display: block; text-align: center; text-decoration: none; }
+
+@media (max-width: 480px) {
+  .rfl-payment-result-page { padding: 16px; }
+  .rfl-payment-result-card { padding: 20px; }
+  .rfl-payment-result-summary { padding: 16px; }
+  .rfl-payment-result-summary > div { gap: 12px; }
+  .rfl-payment-result-card h1 { font-size: 1.65rem; }
+}
+
 .rfl-history-page {
   min-height: 100vh;
   padding: 32px;
@@ -3030,111 +3043,6 @@ input:focus-visible {
 
 .rfl-settings-next-step {
   background: rgba(236, 247, 240, 0.92);
-}
-
-.rfl-one-time-charge-form {
-  display: grid;
-  gap: 16px;
-}
-
-.rfl-one-time-charge-form .rfl-primary-button {
-  width: 100%;
-  margin-top: 2px;
-}
-
-.rfl-one-time-charge-form .rfl-primary-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.rfl-settings-placeholder-note {
-  margin-top: 14px !important;
-  text-align: center;
-  font-size: 13px;
-}
-
-@media (max-width: 640px) {
-  .rfl-settings-editor-card,
-  .rfl-settings-next-step {
-    padding: 18px;
-    border-radius: 16px;
-  }
-}
-
-.rfl-one-time-charge-form .rfl-field {
-  display: grid;
-  gap: 7px;
-}
-
-.rfl-one-time-charge-form .rfl-field > span {
-  color: var(--rfl-text);
-  font-size: 14px;
-  font-weight: 750;
-  line-height: 1.2;
-}
-
-.rfl-one-time-charge-form input {
-  width: 100%;
-  min-height: 42px;
-  padding: 0 13px;
-  border: 1px solid rgba(76, 130, 101, 0.42);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.98);
-  color: var(--rfl-text);
-  font: inherit;
-  outline: none;
-  transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.rfl-one-time-charge-form input::placeholder {
-  color: #9aa7a0;
-}
-
-.rfl-one-time-charge-form input:focus {
-  border-color: var(--rfl-primary);
-  box-shadow: 0 0 0 3px rgba(76, 130, 101, 0.14);
-}
-
-.rfl-one-time-charge-form .rfl-money-input {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  align-items: stretch;
-  overflow: hidden;
-  min-height: 42px;
-  border: 1px solid rgba(76, 130, 101, 0.42);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.98);
-  transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.rfl-one-time-charge-form .rfl-money-input:focus-within {
-  border-color: var(--rfl-primary);
-  box-shadow: 0 0 0 3px rgba(76, 130, 101, 0.14);
-}
-
-.rfl-one-time-charge-form .rfl-money-input > span {
-  display: grid;
-  place-items: center;
-  border-right: 1px solid rgba(76, 130, 101, 0.24);
-  background: rgba(236, 247, 240, 0.92);
-  color: var(--rfl-primary);
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.rfl-one-time-charge-form .rfl-money-input input {
-  min-width: 0;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.rfl-one-time-charge-form .rfl-money-input input:focus {
-  box-shadow: none;
 }
 
 .rfl-setup-grid {

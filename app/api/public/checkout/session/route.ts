@@ -1,9 +1,11 @@
 import {
   CheckoutSessionStatus,
   PaymentMethod,
+  Prisma,
 } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { lockActiveCheckoutBusiness } from "@/lib/checkoutBusinessLock";
 import {
   calculateCheckoutPricing,
   type CheckoutPricingPlan,
@@ -176,7 +178,6 @@ export async function POST(request: Request) {
 const business =
   await getPublicCheckoutBusiness(
     accountCode,
-    unitNumber
   );
 
   if (
@@ -193,17 +194,6 @@ const business =
     );
   }
 
-  if (!business.stripeConnection?.readyForLive) {
-    return NextResponse.json(
-      {
-        error:
-          "This business is not currently ready to accept payments.",
-      },
-      {
-        status: 409,
-      }
-    );
-  }
 
 if (!business.accountCode) {
   return NextResponse.json(
@@ -217,7 +207,7 @@ if (!business.accountCode) {
 }
 
   const plan = business.recurringPlans.find(
-    (candidate) => candidate.id === planId
+    (candidate) => candidate.isActive && candidate.id === planId
   );
 
   if (!plan) {
@@ -254,18 +244,21 @@ if (!business.accountCode) {
 const pricing = calculateCheckoutPricing({
   plan: pricingPlan,
   paymentMethod: body.paymentMethod,
-  oneTimeCharges: business.oneTimeCharges,
 });
 
   const expiresAt = new Date(
     Date.now() + 30 * 60 * 1000
   );
 
+  const validatedAccountCode = business.accountCode;
+  const paymentMethod = body.paymentMethod;
   const checkoutSession =
-    await prisma.checkoutSession.create({
+    await prisma.$transaction(async tx => {
+    if (!await lockActiveCheckoutBusiness(tx, business.id)) return null;
+    return tx.checkoutSession.create({
       data: {
         businessId: business.id,
-        accountCode: business.accountCode,
+        accountCode: validatedAccountCode,
         planId: plan.id,
 
         billingCycle: pricing.billingCycle,
@@ -274,7 +267,7 @@ const pricing = calculateCheckoutPricing({
         lastName,
         phone,
 
-        paymentMethod: body.paymentMethod,
+        paymentMethod,
 
         baseAmountCents:
           pricing.baseAmountCents,
@@ -293,11 +286,6 @@ const pricing = calculateCheckoutPricing({
 
         lineItems: pricing.lineItems,
 
-        oneTimeChargeIds:
-  pricing.activeOneTimeCharges.map(
-    (charge) => charge.id
-  ),
-
         dueDate: pricing.dueDate,
         graceEndsAt: pricing.graceEndsAt,
 
@@ -311,6 +299,11 @@ const pricing = calculateCheckoutPricing({
         expiresAt: true,
       },
     });
+    // Large itemized snapshots remain authoritative even when Stripe transport
+    // is compact. Match checkout-start's bounded transaction budget for JSON.
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 10000, timeout: 30000 });
+
+  if (!checkoutSession) return NextResponse.json({ error: "This business is no longer accepting payments." }, { status: 409 });
 
   return NextResponse.json(
     {

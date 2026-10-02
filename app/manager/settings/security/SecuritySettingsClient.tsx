@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 
 type SecurityResponse = {
   success?: boolean;
+  requiresLogin?: boolean;
   email?: string;
   message?: string;
   error?: string;
@@ -58,6 +59,8 @@ export default function SecuritySettingsClient({
         return;
       }
 
+      if (data.requiresLogin) { window.location.assign("/login/manager"); return; }
+
       const updatedEmail = data.email ?? newEmail.trim().toLowerCase();
 
       setDisplayEmail(updatedEmail);
@@ -106,6 +109,8 @@ export default function SecuritySettingsClient({
         );
         return;
       }
+
+      if (data.requiresLogin) { window.location.assign("/login/manager"); return; }
 
       setPasswordCurrentPassword("");
       setNewPassword("");

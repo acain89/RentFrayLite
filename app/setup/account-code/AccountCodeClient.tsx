@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -271,7 +271,7 @@ export default function AccountCodeClient({
             aria-live="polite"
           >
             {available === true && !checking ? (
-              <span aria-hidden="true">✓</span>
+              <span aria-hidden="true">âœ“</span>
             ) : null}
 
             {statusText}
@@ -287,7 +287,7 @@ export default function AccountCodeClient({
             <p>
               Your account code is permanent. Customers will use this code whenever
               they make a payment to your business, so take a moment to make sure
-              you're happy with your choice.
+              you&apos;re happy with your choice.
             </p>
           </div>
         </aside>

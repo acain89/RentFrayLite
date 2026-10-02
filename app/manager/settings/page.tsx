@@ -82,25 +82,6 @@ export default async function ManagerSettingsPage() {
           </Link>
         </section>
 
-        <section className="rfl-settings-one-time">
-          <div className="rfl-settings-one-time-copy">
-            <h2>One-Time Charges</h2>
-
-            <p>
-              Need to charge a specific unit for damage, cleaning,
-              repairs, or another one-time expense? Add it here.
-            </p>
-          </div>
-
-          <Link
-            className="rfl-settings-link"
-            href="/manager/settings/one-time-charges"
-          >
-            <span>One-Time Charges</span>
-            <span aria-hidden="true">›</span>
-          </Link>
-        </section>
-
         <Link
           className="rfl-settings-back"
           href="/manager/dashboard"

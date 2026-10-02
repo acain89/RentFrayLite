@@ -1,19 +1,26 @@
-import { randomUUID } from "node:crypto";
+import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
+import { InvalidRecurringCharges, saveRecurringCharges } from "@/lib/recurringChargePersistence";
 import {
   SessionType,
   SetupStep,
 } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/session";
+import {
+  MAX_PAYMENT_AMOUNT_CENTS,
+} from "@/lib/platformFees";
 
 const chargeSchema = z.object({
   id: z.string().min(1).max(100).nullable(),
-  clientKey: z.string().min(1).max(100),
+  clientKey: z.string().min(1).max(200),
+  sourceChargeId: z.string().min(1).max(100).nullable().optional(),
+  logicalChargeKey: z.string().min(1).max(100).optional(),
+  effectiveBillingCycle: z.string().nullable().optional(),
+  endsAfterBillingCycle: z.string().nullable().optional(),
   sharedChargeGroupId: z.string().max(100).nullable(),
   label: z.string().trim().min(1).max(80),
-  amountCents: z.number().int().min(1).max(100_000_000),
+  amountCents: z.number().int().min(1).max(MAX_PAYMENT_AMOUNT_CENTS),
   applyToAllTiers: z.boolean(),
 });
 
@@ -34,7 +41,7 @@ export async function PUT(request: Request) {
     !session ||
     session.type !== SessionType.MANAGER ||
     !session.manager ||
-    !session.business
+    !session.business || session.manager.businessId !== session.business.id
   ) {
     return NextResponse.json(
       { error: "Authentication required." },
@@ -64,193 +71,14 @@ export async function PUT(request: Request) {
 
   const businessId = session.business.id;
   const managerId = session.manager.id;
-
-  const plans = await prisma.recurringPlan.findMany({
-    where: {
-      businessId,
-      isActive: true,
-    },
-    orderBy: {
-      sortOrder: "asc",
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  const planIds = plans.map((plan) => plan.id);
-  const submittedPlanIds = parsed.data.tiers.map(
-    (tier) => tier.recurringPlanId
-  );
-
-  if (
-    submittedPlanIds.length !== planIds.length ||
-    submittedPlanIds.some((id) => !planIds.includes(id))
-  ) {
-    return NextResponse.json(
-      { error: "One or more rent tiers are invalid." },
-      { status: 400 }
-    );
-  }
-
-  const submittedExistingIds = parsed.data.tiers.flatMap(
-    (tier) =>
-      tier.charges
-        .map((charge) => charge.id)
-        .filter((id): id is string => Boolean(id))
-  );
-
-  const ownedCharges =
-    submittedExistingIds.length === 0
-      ? []
-      : await prisma.recurringCharge.findMany({
-          where: {
-            id: {
-              in: submittedExistingIds,
-            },
-            recurringPlan: {
-              businessId,
-            },
-          },
-          select: {
-            id: true,
-          },
-        });
-
-  if (ownedCharges.length !== submittedExistingIds.length) {
-    return NextResponse.json(
-      { error: "One or more recurring charges are invalid." },
-      { status: 400 }
-    );
-  }
+  const setupAlreadyCompleted = Boolean(session.business.setupCompletedAt);
 
   try {
-    const savedTiers = await prisma.$transaction(
+    const savedTiers = await withManagerMutation(session,
       async (transaction) => {
-        await transaction.recurringCharge.deleteMany({
-          where: {
-            recurringPlan: {
-              businessId,
-            },
-          },
-        });
+        const saved = await saveRecurringCharges(transaction, businessId, parsed.data.tiers);
 
-        const submittedCharges = parsed.data.tiers.flatMap(
-          (tier) =>
-            tier.charges.map((charge) => ({
-              ...charge,
-              recurringPlanId: tier.recurringPlanId,
-            }))
-        );
-
-        const sharedGroups = new Map<
-          string,
-          {
-            sharedChargeGroupId: string;
-            clientKey: string;
-            label: string;
-            amountCents: number;
-          }
-        >();
-
-        for (const charge of submittedCharges) {
-          if (!charge.applyToAllTiers) {
-            continue;
-          }
-
-          const groupKey =
-            charge.sharedChargeGroupId ??
-            charge.clientKey;
-
-          if (!sharedGroups.has(groupKey)) {
-            sharedGroups.set(groupKey, {
-              sharedChargeGroupId:
-                charge.sharedChargeGroupId ??
-                randomUUID(),
-              clientKey: charge.clientKey,
-              label: charge.label.trim(),
-              amountCents: charge.amountCents,
-            });
-          }
-        }
-
-        const recordsByPlan = new Map<
-          string,
-          Array<{
-            id: string;
-            clientKey: string;
-            sharedChargeGroupId: string | null;
-            label: string;
-            amountCents: number;
-            applyToAllTiers: boolean;
-            sortOrder: number;
-          }>
-        >();
-
-        for (const planId of planIds) {
-          recordsByPlan.set(planId, []);
-        }
-
-        for (const charge of submittedCharges) {
-          if (charge.applyToAllTiers) {
-            continue;
-          }
-
-          const created =
-            await transaction.recurringCharge.create({
-              data: {
-                recurringPlanId: charge.recurringPlanId,
-                sharedChargeGroupId: null,
-                label: charge.label.trim(),
-                amountCents: charge.amountCents,
-                sortOrder:
-                  recordsByPlan.get(charge.recurringPlanId)
-                    ?.length ?? 0,
-                isActive: true,
-              },
-            });
-
-          recordsByPlan.get(charge.recurringPlanId)?.push({
-            id: created.id,
-            clientKey: charge.clientKey,
-            sharedChargeGroupId: null,
-            label: created.label,
-            amountCents: created.amountCents,
-            applyToAllTiers: false,
-            sortOrder: created.sortOrder,
-          });
-        }
-
-        for (const shared of sharedGroups.values()) {
-          for (const planId of planIds) {
-            const created =
-              await transaction.recurringCharge.create({
-                data: {
-                  recurringPlanId: planId,
-                  sharedChargeGroupId:
-                    shared.sharedChargeGroupId,
-                  label: shared.label,
-                  amountCents: shared.amountCents,
-                  sortOrder:
-                    recordsByPlan.get(planId)?.length ?? 0,
-                  isActive: true,
-                },
-              });
-
-            recordsByPlan.get(planId)?.push({
-              id: created.id,
-              clientKey: `${shared.clientKey}:${planId}`,
-              sharedChargeGroupId:
-                shared.sharedChargeGroupId,
-              label: created.label,
-              amountCents: created.amountCents,
-              applyToAllTiers: true,
-              sortOrder: created.sortOrder,
-            });
-          }
-        }
-
-        if (parsed.data.advance) {
+        if (parsed.data.advance && !setupAlreadyCompleted) {
           await transaction.business.update({
             where: {
               id: businessId,
@@ -274,11 +102,7 @@ export async function PUT(request: Request) {
           });
         }
 
-        return planIds.map((recurringPlanId) => ({
-          recurringPlanId,
-          charges:
-            recordsByPlan.get(recurringPlanId) ?? [],
-        }));
+        return saved;
       }
     );
 
@@ -289,7 +113,9 @@ export async function PUT(request: Request) {
         ? "/setup/recurring/billing"
         : undefined,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof InvalidRecurringCharges) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof ManagerMutationUnauthorized) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     return NextResponse.json(
       { error: "Unable to save the recurring charges." },
       { status: 500 }

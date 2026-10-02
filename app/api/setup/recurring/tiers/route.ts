@@ -1,4 +1,5 @@
-import {
+import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
+﻿import {
   SessionType,
   SetupStep,
 } from "@prisma/client";
@@ -6,6 +7,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/session";
+import { MAX_PAYMENT_AMOUNT_CENTS } from "@/lib/platformFees";
 
 const recurringTiersSchema = z.object({
   tiers: z
@@ -14,7 +16,7 @@ const recurringTiersSchema = z.object({
         id: z.string().min(1).max(100).nullable(),
         clientKey: z.string().min(1).max(100),
         name: z.string().trim().min(1).max(80),
-        amountCents: z.number().int().min(1).max(100_000_000),
+        amountCents: z.number().int().min(1).max(MAX_PAYMENT_AMOUNT_CENTS),
       })
     )
     .min(1)
@@ -29,7 +31,7 @@ export async function PUT(request: Request) {
     !session ||
     session.type !== SessionType.MANAGER ||
     !session.manager ||
-    !session.business
+    !session.business || session.manager.businessId !== session.business.id
   ) {
     return NextResponse.json(
       { error: "Authentication required." },
@@ -51,13 +53,22 @@ export async function PUT(request: Request) {
   const parsed = recurringTiersSchema.safeParse(body);
 
   if (!parsed.success) {
+    const amountTooHigh = parsed.error.issues.some(
+      (issue) =>
+        issue.path.at(-1) === "amountCents" &&
+        issue.code === "too_big"
+    );
+
     return NextResponse.json(
-      { error: "Enter at least one valid rent tier." },
+      {
+        error: amountTooHigh
+          ? "Monthly amount cannot exceed $5,000."
+          : "Enter at least one valid rent tier.",
+      },
       { status: 400 }
     );
   }
-
-  const normalizedNames = parsed.data.tiers.map((tier) =>
+const normalizedNames = parsed.data.tiers.map((tier) =>
     tier.name.trim().toLowerCase()
   );
 
@@ -70,6 +81,7 @@ export async function PUT(request: Request) {
 
   const businessId = session.business.id;
   const managerId = session.manager.id;
+  const setupAlreadyCompleted = Boolean(session.business.setupCompletedAt);
 
   const submittedExistingIds = parsed.data.tiers
     .map((tier) => tier.id)
@@ -95,7 +107,7 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const savedTiers = await prisma.$transaction(
+    const savedTiers = await withManagerMutation(session,
       async (transaction) => {
 await transaction.recurringPlan.updateMany({
   where: {
@@ -164,7 +176,7 @@ await transaction.recurringPlan.updateMany({
           });
         }
 
-        if (parsed.data.advance) {
+        if (parsed.data.advance && !setupAlreadyCompleted) {
           await transaction.business.update({
             where: {
               id: businessId,
@@ -198,10 +210,12 @@ await transaction.recurringPlan.updateMany({
         ? "/setup/recurring/charges"
         : undefined,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof ManagerMutationUnauthorized) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     return NextResponse.json(
       { error: "Unable to save the rent tiers." },
       { status: 500 }
     );
   }
 }
+

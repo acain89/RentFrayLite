@@ -1,8 +1,9 @@
+import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
 import { SessionType } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
-import { getCurrentSession } from "@/lib/session";
+import { clearSessionCookie, getCurrentSession } from "@/lib/session";
 
 type SecurityPayload = {
   action?: unknown;
@@ -13,6 +14,15 @@ type SecurityPayload = {
 };
 
 export async function PATCH(request: NextRequest) {
+  try {
+    return await updateSecurity(request);
+  } catch (error) {
+    if (error instanceof ManagerMutationUnauthorized) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    throw error;
+  }
+}
+
+async function updateSecurity(request: NextRequest) {
   const session = await getCurrentSession();
 
   if (
@@ -26,6 +36,8 @@ export async function PATCH(request: NextRequest) {
       { status: 401 }
     );
   }
+
+  const businessId = session.business.id;
 
   let body: SecurityPayload;
 
@@ -108,14 +120,15 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    await prisma.$transaction([
-      prisma.manager.update({
-        where: { id: manager.id },
+    await withManagerMutation(session, async tx => {
+      await tx.manager.update({
+        where: { id: manager.id, passwordHash: manager.passwordHash, email: manager.email, isActive: true },
         data: { email: newEmail },
-      }),
-      prisma.auditLog.create({
+      });
+      await tx.session.deleteMany({ where: { managerId: manager.id } });
+      await tx.auditLog.create({
         data: {
-          businessId: session.business.id,
+          businessId,
           actorType: "MANAGER",
           actorId: manager.id,
           action: "MANAGER_EMAIL_CHANGED",
@@ -123,13 +136,15 @@ export async function PATCH(request: NextRequest) {
           targetId: manager.id,
           summary: "Manager login email changed.",
         },
-      }),
-    ]);
+      });
+    });
 
+    await clearSessionCookie();
     return NextResponse.json({
       success: true,
+      requiresLogin: true,
       email: newEmail,
-      message: "Login email updated.",
+      message: "Login email updated. Please log in again.",
     });
   }
 
@@ -167,14 +182,15 @@ export async function PATCH(request: NextRequest) {
 
     const passwordHash = await hashPassword(newPassword);
 
-    await prisma.$transaction([
-      prisma.manager.update({
-        where: { id: manager.id },
+    await withManagerMutation(session, async tx => {
+      await tx.manager.update({
+        where: { id: manager.id, passwordHash: manager.passwordHash, email: manager.email, isActive: true },
         data: { passwordHash },
-      }),
-      prisma.auditLog.create({
+      });
+      await tx.session.deleteMany({ where: { managerId: manager.id } });
+      await tx.auditLog.create({
         data: {
-          businessId: session.business.id,
+          businessId,
           actorType: "MANAGER",
           actorId: manager.id,
           action: "MANAGER_PASSWORD_CHANGED",
@@ -182,12 +198,14 @@ export async function PATCH(request: NextRequest) {
           targetId: manager.id,
           summary: "Manager login password changed.",
         },
-      }),
-    ]);
+      });
+    });
 
+    await clearSessionCookie();
     return NextResponse.json({
       success: true,
-      message: "Password updated.",
+      requiresLogin: true,
+      message: "Password updated. Please log in again.",
     });
   }
 
