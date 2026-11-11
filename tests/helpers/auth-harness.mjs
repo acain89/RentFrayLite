@@ -11,7 +11,7 @@ const require=createRequire(import.meta.url), root=path.resolve(import.meta.dirn
 const compiled=new Map(), initialHash=await bcrypt.hash('old-password',12), adminHash=await bcrypt.hash('isolated-admin-passphrase',12);
 const clone=x=>structuredClone(x);
 function isolated(){
- let state={manager:[],adminAccess:[],business:[],session:[],auditLog:[]},queue=Promise.resolve();const failures=new Set();
+ let state={instantPayoutRequest:[],verificationToken:[],manager:[],adminAccess:[],business:[],session:[],auditLog:[],stripeConnection:[],stripeAccountProvisioning:[]},queue=Promise.resolve();const failures=new Set();
  const matches=(r,w={})=>Object.entries(w).every(([k,v])=>v && typeof v === 'object' && 'gt' in v ? r[k]>v.gt : r[k]===v);
  const defer=fn=>({then:(yes,no)=>Promise.resolve().then(fn).then(yes,no),execute:fn});
  const db={failures,now:new Date(),$queryRaw:async q=>{if(/clock_timestamp/.test(q.sql))return [{now:db.now}];assert.match(q.sql,/FOR (?:NO KEY )?UPDATE|pg_advisory_xact_lock/);return [];}};
@@ -23,7 +23,7 @@ function isolated(){
   return row;
  };
  for(const name of Object.keys(state))db[name]={
-  create:({data})=>defer(()=>{if(failures.has(name+'.create'))throw Error('Injected create failure');const row={id:randomUUID(),isActive:true,managerId:null,adminAccessId:null,businessId:null,lastUsedAt:new Date(),createdAt:new Date(),...clone(data)};state[name].push(row);return clone(row);}),
+  create:({data})=>defer(()=>{if(failures.has(name+'.create'))throw Error('Injected create failure');const row={id:randomUUID(),isActive:true,managerId:null,adminAccessId:null,businessId:null,usedAt:null,credentialFingerprint:null,lastUsedAt:new Date(),createdAt:name==='stripeAccountProvisioning'?db.now:new Date(),...clone(data)};state[name].push(row);return clone(row);}),
   findUnique:({where,include})=>defer(()=>hydrate(name,state[name].find(r=>matches(r,where)),include)),
   count:({where={}}={})=>defer(()=>state[name].filter(r=>matches(r,where)).length),
   findMany:({where={}}={})=>defer(()=>clone(state[name].filter(r=>matches(r,where)))),
@@ -43,6 +43,7 @@ export async function authHarness(backend='isolated', sharedDb, services={}, env
   admins.push(await db.adminAccess.create({data:{codeHash:adminHash}}));
  }
  const mocks={
+  'node:util':{isDeepStrictEqual:require('node:util').isDeepStrictEqual},
   'node:buffer':require('node:buffer'),'node:crypto':require('node:crypto'),'@prisma/client':enums,'@/lib/prisma':{prisma:db},'bcryptjs':{__esModule:true,default:bcrypt},'zod':require('zod'),
   'next/headers':{cookies:async()=>({get:k=>jar.has(k)?{value:jar.get(k)}:undefined,set:(k,v,o)=>{if(readonly)throw Error('Cookies can only be modified in a Server Action or Route Handler.');jar.set(k,v);cookieOptions.push(o);}})},
   'next/server':{NextResponse:{json:(body,opts)=>Response.json(body,opts),redirect:url=>new Response(null,{status:307,headers:{location:String(url)}})}},'next/navigation':{redirect:url=>{throw Error('REDIRECT '+url);}},
@@ -52,13 +53,23 @@ export async function authHarness(backend='isolated', sharedDb, services={}, env
  };
  Object.assign(mocks,services);
  const cache=new Map();function load(p){if(cache.has(p))return cache.get(p);const file=path.join(root,p);if(!compiled.has(p))compiled.set(p,ts.transpileModule(readFileSync(file,'utf8'),{fileName:file,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText);
-  const mod={exports:{}};vm.runInThisContext('(function(require,module,exports,process){'+compiled.get(p)+'})',{filename:file})(n=>{if(Object.hasOwn(mocks,n))return mocks[n];if(n.startsWith('@/lib/'))return load(n.slice(2)+'.ts');throw Error('Unexpected import '+n);},mod,mod.exports,{env:environment});cache.set(p,mod.exports);return mod.exports;
+  const mod={exports:{}};vm.runInThisContext('(function(require,module,exports,process){'+compiled.get(p)+'})',{filename:file})(n=>{if(Object.hasOwn(mocks,n))return mocks[n];if(n.startsWith('@/lib/'))return load(n.slice(2)+'.ts');throw Error('Unexpected import '+n);},mod,mod.exports,{env:{NEXT_PUBLIC_BASE_URL:'https://example.test',...environment}});cache.set(p,mod.exports);return mod.exports;
  }
  const session=load('lib/session.ts'),auth=load('lib/auth.ts');
- const token=()=>jar.get('rfl_session');const use=t=>jar.set('rfl_session',t);const request=body=>new Request('https://example.test/api',{method:'PATCH',body:JSON.stringify(body)});
+ const token=()=>jar.get('rfl_session');const use=t=>jar.set('rfl_session',t);const request=body=>{
+  const original=new Request('https://example.test/api',{method:'PATCH',headers:{origin:'https://example.test','content-type':'application/json'},body:JSON.stringify(body)});
+  if(!Array.isArray(body?.tiers)&&!Array.isArray(body?.rules))return original;
+  // Existing bulk-save fixtures observe the same revision a rendered setup page
+  // supplies. Explicit versions remain available for stale-write tests.
+  return {url:original.url,headers:original.headers,json:async()=>{
+   const authority=await session.getCurrentSession(),businessId=authority?.business?.id??businesses[0].id;
+   const plans=await db.recurringPlan.findMany({where:{businessId,isActive:true},take:51,include:{charges:true}});
+   return {...body,expectedVersion:body.expectedVersion??load('lib/recurringConfiguration.ts').configurationFingerprint(plans)};
+  }};
+ };
  async function issue(type='MANAGER',index=0){if(type==='MANAGER'){const m=await db.manager.findUnique({where:{id:managers[index].id}});await session.createManagerSession({managerId:m.id,businessId:m.businessId,passwordHash:m.passwordHash,email:m.email});}else{const a=await db.adminAccess.findUnique({where:{id:admins[index].id}});await session.createAdminSession(a.id,a.codeHash);}return token();}
  const change=body=>load('app/api/manager/security/route.ts').PATCH(request({action:'PASSWORD',currentPassword:'old-password',newPassword:'new-password',confirmPassword:'new-password',...body}));
  const reset=(index=0,body={})=>load('app/api/admin/businesses/[businessId]/credentials/route.ts').PATCH(request({password:'new-password',confirmPassword:'new-password',...body}),{params:Promise.resolve({businessId:businesses[index].id})});
- return {db,jar,cookieOptions,businesses,managers,admins,session,auth,load,token,use,issue,change,reset,readonly:value=>{readonly=value;},request};
+ return {mocks,db,jar,cookieOptions,businesses,managers,admins,session,auth,load,token,use,issue,change,reset,readonly:value=>{readonly=value;},request};
 }
 export {postgres,initialHash};

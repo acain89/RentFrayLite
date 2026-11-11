@@ -15,6 +15,7 @@ export default function TermsPage() {
           <h1>Terms of Service</h1>
           <p>Effective date: July 26, 2026</p>
           <p>Version 1.0</p>
+          <p>Payment SMS disclosures updated: October 25, 2026</p>
         </header>
 
         <section>
@@ -168,17 +169,25 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2>11. SMS Receipts</h2>
+          <h2>11. Payment-status SMS</h2>
           <p>
-            A Payer who supplies a mobile number requests and authorizes
-            a transactional SMS receipt or payment-status message.
-            Message and data rates may apply. Delivery is not guaranteed
-            and may depend on the mobile carrier, Twilio, device
-            settings, and network availability.
+            Tenants and management may provide affirmative consent to receive
+            automated RentFrayLite payment-status texts at their authorized number.
+            Supplying a phone number alone does not provide SMS consent. Consent
+            is optional and is not a condition of payment. Messages concern
+            processing, success, failure, returns, or disputes; frequency varies.
           </p>
           <p>
-            RentFrayLite does not use payment-receipt consent as consent
-            for unrelated marketing messages.
+            Message and data rates may apply. Reply STOP to opt out or HELP for
+            help. Management may also turn Payment SMS Notifications off in
+            Settings. An application setting does not override a STOP opt-out.
+            Contact your property manager for payment assistance.
+          </p>
+          <p>
+            Delivery is not guaranteed and depends on Twilio, mobile carriers,
+            device settings, and network availability. Carriers are not liable
+            for delayed or undelivered messages. Keep your online payment
+            confirmation. SMS consent is not consent to marketing messages.
           </p>
         </section>
 

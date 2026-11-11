@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import SiteFooter from "@/components/SiteFooter";
+import { RFL_PUBLIC_ORIGIN } from "@/lib/publicMetadata";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,15 +15,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:10000"
-  ),
+  metadataBase: new URL(RFL_PUBLIC_ORIGIN),
   title: {
     default: "RentFrayLite",
     template: "%s | RentFrayLite",
   },
   description:
-    "Simple recurring and one-time payment collection for independent businesses.",
+    "Standard rent and Custom Payments for rental properties.",
   applicationName: "RentFrayLite",
   robots: {
     index: true,

@@ -1,25 +1,29 @@
-import { BusinessStatus, Prisma } from "@prisma/client";
+import { requireCredentialOrigin } from "@/lib/credentialRequest";
+import { BusinessStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/adminApi";
-import { prisma } from "@/lib/prisma";
+import { withAdminMutation, AdminMutationUnauthorized } from "@/lib/adminMutation";
 
 type RouteContext = { params: Promise<{ businessId: string }> };
 
-export async function DELETE(_request: Request, context: RouteContext): Promise<NextResponse> {
+export async function DELETE(request: Request, context: RouteContext): Promise<NextResponse> {
+  try { requireCredentialOrigin(request); } catch { return NextResponse.json({ error: "Invalid request origin." }, { status: 403 }); }
+  if (request.body) return NextResponse.json({ error: "This action does not accept a request body." }, { status: 400 });
+
+  try { return await deleteBusiness(context); }
+  catch (error) {
+    if (error instanceof AdminMutationUnauthorized) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    throw error;
+  }
+}
+
+async function deleteBusiness(context: RouteContext): Promise<NextResponse> {
   const auth = await requireAdminApi();
   if (auth.response) return auth.response;
   if (!auth.session?.adminAccess) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   const admin = auth.session.adminAccess;
-  const sessionId = auth.session.id;
   const { businessId } = await context.params;
-  const result = await prisma.$transaction(async tx => {
-    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "AdminAccess" WHERE "id" = ${admin.id} FOR UPDATE`);
-    if (!(await tx.adminAccess.findUnique({ where: { id: admin.id } }))?.isActive) return "unauthorized";
-    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Session" WHERE "id" = ${sessionId} FOR UPDATE`);
-    const session = await tx.session.findUnique({ where: { id: sessionId } });
-    if (!session || session.adminAccessId !== admin.id || session.expiresAt <= new Date()) return "unauthorized";
-    // Checkout creation/reservation takes the same Business lock first.
-    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Business" WHERE "id" = ${businessId} FOR NO KEY UPDATE`);
+  const result = await withAdminMutation(auth.session, businessId, async tx => {
     const business = await tx.business.findUnique({ where: { id: businessId } });
     if (!business) return "missing";
     // A local status never proves an external payment cannot settle.
@@ -40,8 +44,7 @@ export async function DELETE(_request: Request, context: RouteContext): Promise<
       summary: `${business.name} (${business.accountCode ?? "No account code"}) ${action}`,
     } });
     return action;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 10000, timeout: 30000 });
-  if (result === "unauthorized") return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  });
   if (result === "missing") return NextResponse.json({ error: "Business not found." }, { status: 404 });
   return NextResponse.json({ success: true, action: result, message: result === "deactivated"
     ? "Business deactivated. Financial history is retained; existing Stripe payments can still settle."

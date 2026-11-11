@@ -6,6 +6,7 @@ export default async function AdminPage() {
   await requireAdmin();
 
   const dashboard = await getAdminDashboardData();
+  await requireAdmin();
 
   return <AdminDashboardClient initialData={dashboard} />;
 }

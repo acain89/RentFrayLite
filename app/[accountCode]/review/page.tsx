@@ -1,8 +1,12 @@
+import { assertCurrentVersionedReviewQuote } from "@/lib/versionedCheckoutQuote";
 import { isLinkedCheckoutResume } from "@/lib/checkoutRetry";
+import { logOperationalError } from "@/lib/operationalLogging";
+import { hasCheckoutQuoteAccess } from "@/lib/checkoutConsent";
 import { getPaymentResultAccessToken, verifyPaymentResultAccessToken } from "@/lib/paymentResultAccess";
 import { CheckoutSessionStatus } from "@prisma/client";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { assertCheckoutSource, assertCustomPaymentQuote } from "@/lib/customPayment";
 import ReviewPaymentClient, {
   type ReviewLineItem,
 } from "./ReviewPaymentClient";
@@ -15,6 +19,17 @@ type ReviewPageProps = {
     session?: string | string[];
   }>;
 };
+
+// Only storage calls enter this boundary; Next redirect/notFound exceptions do
+// not. Never pass a raw query error (or its cause) to framework render logging.
+async function reviewStorage<T>(id: string, operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    logOperationalError("checkout_review_failed", error, id);
+    throw new Error("Payment review unavailable. Please try again.");
+  }
+}
 
 function normalizeAccountCode(value: string): string {
   return decodeURIComponent(value)
@@ -90,15 +105,24 @@ export default async function ReviewPage({
   }
 
   const checkoutSession =
-    await prisma.checkoutSession.findUnique({
+    await reviewStorage(checkoutSessionId, () => prisma.checkoutSession.findUnique({
       where: {
         id: checkoutSessionId,
       },
-    });
+    }));
 
   if (!checkoutSession) {
     notFound();
   }
+  const reserved = Boolean(checkoutSession.paymentId || checkoutSession.stripeCheckoutSessionId);
+  if (!reserved && !await hasCheckoutQuoteAccess(checkoutSession.id)) notFound();
+  if (reserved && (!checkoutSession.paymentId || !checkoutSession.stripeCheckoutSessionId ||
+    !verifyPaymentResultAccessToken(
+      (await getPaymentResultAccessToken(checkoutSession.stripeCheckoutSessionId)) ?? "",
+      checkoutSession.stripeCheckoutSessionId, checkoutSession.id,
+    ))) notFound();
+  assertCheckoutSource(checkoutSession);
+  if (checkoutSession.sourceType === "CUSTOM_PAYMENT" && !checkoutSession.paymentId) assertCustomPaymentQuote(checkoutSession);
 
   if (
     checkoutSession.accountCode.toUpperCase() !==
@@ -110,10 +134,6 @@ export default async function ReviewPage({
   const linkedResume = isLinkedCheckoutResume(checkoutSession);
   // Render only the stored attempt for its bound browser. Continue performs
   // Stripe/readiness reconciliation; rendering does not inspect or mutate Stripe.
-  if (linkedResume && !verifyPaymentResultAccessToken(
-    (await getPaymentResultAccessToken(checkoutSession.stripeCheckoutSessionId!)) ?? "",
-    checkoutSession.stripeCheckoutSessionId!, checkoutSession.id,
-  )) notFound();
 
   const now = new Date();
 
@@ -125,7 +145,7 @@ export default async function ReviewPage({
       checkoutSession.status ===
       CheckoutSessionStatus.CREATED
     ) {
-      await prisma.checkoutSession.updateMany({
+      await reviewStorage(checkoutSession.id, () => prisma.checkoutSession.updateMany({
         where: {
           id: checkoutSession.id,
           status: CheckoutSessionStatus.CREATED, paymentId: null, stripeCheckoutSessionId: null,
@@ -135,7 +155,7 @@ export default async function ReviewPage({
           status:
             CheckoutSessionStatus.EXPIRED,
         },
-      });
+      }));
     }
 
     return (
@@ -201,6 +221,8 @@ export default async function ReviewPage({
     );
   }
 
+  await reviewStorage(checkoutSession.id, () => assertCurrentVersionedReviewQuote(prisma, checkoutSession, now));
+
   const business =
     await prisma.business.findUnique({
       where: {
@@ -244,6 +266,8 @@ export default async function ReviewPage({
   return (
     <ReviewPaymentClient
       checkoutSessionId={checkoutSession.id}
+      sourceType={checkoutSession.sourceType}
+      attemptReserved={Boolean(checkoutSession.paymentId)}
       businessName={business.name}
       accountCode={
         checkoutSession.accountCode
@@ -261,10 +285,10 @@ export default async function ReviewPage({
         checkoutSession.billingCycle
       }
       dueDate={
-        checkoutSession.dueDate.toISOString()
+        checkoutSession.dueDate?.toISOString() ?? null
       }
       graceEndsAt={
-        checkoutSession.graceEndsAt.toISOString()
+        checkoutSession.graceEndsAt?.toISOString() ?? null
       }
       lineItems={lineItems}
       subtotalCents={

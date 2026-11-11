@@ -7,10 +7,10 @@ async function admin(h) {
  await h.load('lib/session.ts').createAdminSession(a.id,a.codeHash);
  return a;
 }
-const remove=h=>h.load('app/api/admin/businesses/[businessId]/route.ts').DELETE(new Request('https://example.test/api',{method:'DELETE'}),{params:Promise.resolve({businessId:h.business.id})});
+const remove=h=>h.load('app/api/admin/businesses/[businessId]/route.ts').DELETE(new Request('https://example.test/api',{method:'DELETE',headers:{origin:'https://example.test'}}),{params:Promise.resolve({businessId:h.business.id})});
 const lookup=h=>h.db.business.findUnique({where:{id:h.business.id}});
 const snapshot=async h=>({payments:await h.payments(),checkouts:await h.db.checkoutSession.findMany({where:{businessId:h.business.id}}),receipts:await h.db.smsReceipt.findMany({where:{paymentId:{in:(await h.payments()).map(p=>p.id)}}}),audits:await h.db.auditLog.findMany({where:{businessId:h.business.id}})});
-const createSnapshot=h=>h.load('app/api/public/checkout/session/route.ts').POST(new Request('https://example.test/api',{method:'POST',body:JSON.stringify({accountCode:h.business.accountCode,planId:h.business.recurringPlans[0].id,unitNumber:'NEW',firstName:'Test',lastName:'Payer',phone:'5555551234',paymentMethod:'ACH'})}));
+const createSnapshot=h=>h.load('app/api/public/checkout/session/route.ts').POST(new Request('https://example.test/api',{method:"POST",headers:{"content-type":"application/json",origin:"https://example.test"},body:JSON.stringify({accountCode:h.business.accountCode,planId:h.business.recurringPlans[0].id,unitNumber:'NEW',firstName:'Test',lastName:'Payer',phone:'5555551234',paymentMethod:'ACH'})}));
 
 for(const backend of [...(postgres?['postgres']:[]),'isolated']) {
  const label=`${backend} B6`;
@@ -153,7 +153,11 @@ if(postgres) {
   }})),options);
   try{
    const starting=h.start(c);await locked;release();await webhook;assert.equal((await starting).status,200);
-   assert.equal((await h.payments()).length,1);assert.equal((await lookup(h)).isActive,true);
+   const payments=await h.payments();assert.equal(payments.length,2);
+   assert.ok(payments.some(p=>p.id===a.payment.id&&p.status==='FAILED'&&p.subtotalCents===a.payment.subtotalCents));
+   assert.equal(new Set(payments.map(p=>p.checkoutAttemptId)).size,2);
+   assert.equal(payments.find(p=>p.id!==a.payment.id).status,'CHECKOUT_STARTED');
+   assert.equal((await lookup(h)).isActive,true);
   }finally{release();postgres.$transaction=original;}
  });
 }

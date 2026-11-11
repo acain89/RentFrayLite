@@ -5,7 +5,7 @@ export default function SiteFooter() {
     <footer className="rfl-site-footer">
       <div className="rfl-site-footer-inner">
         <p>
-          Â© {new Date().getFullYear()} RentFrayLite
+          © {new Date().getFullYear()} RentFrayLite
         </p>
 
         <nav aria-label="Legal and support">

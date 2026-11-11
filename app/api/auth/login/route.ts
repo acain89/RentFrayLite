@@ -1,3 +1,6 @@
+import { requireCredentialOrigin, credentialJson, PRIVATE_CREDENTIAL_HEADERS } from "@/lib/credentialRequest";
+import { reserveManagementAttempt } from "@/lib/managementLoginThrottle";
+import { prisma } from "@/lib/prisma";
 import { reserveAdminLogin, recordAdminLoginOutcome, ADMIN_LOGIN_WINDOW_MS } from "@/lib/adminLoginThrottle";
 import { NextResponse } from "next/server";
 import {
@@ -13,10 +16,12 @@ import { getSetupRoute } from "@/lib/setupProgress";
 import { loginSchema } from "@/lib/validators";
 
 export async function POST(request: Request) {
-  let body: unknown;
+  try { requireCredentialOrigin(request); } catch { return NextResponse.json({ error: "Invalid request origin." }, { status: 403 }); }
+
+  let body: Record<string,unknown>;
 
   try {
-    body = await request.json();
+    body = await credentialJson(request);
   } catch {
     return NextResponse.json(
       {
@@ -36,9 +41,16 @@ export async function POST(request: Request) {
       status: 429, headers: { "Retry-After": String(ADMIN_LOGIN_WINDOW_MS / 1000) },
     });
   }
+  const isManager=!!body&&typeof body==="object"&&"type" in body&&body.type==="MANAGER";
+  if(isManager){
+    const email="email" in body&&typeof body.email==="string"?body.email.trim().toLowerCase():"invalid";
+    try{if(!await reserveManagementAttempt(prisma,"LOGIN",email))return NextResponse.json({error:"Unable to sign in. Please try again later."},{status:429,headers:{...PRIVATE_CREDENTIAL_HEADERS,"Retry-After":"600"}});}
+    catch{return NextResponse.json({error:"Unable to sign in. Please try again later."},{status:503,headers:PRIVATE_CREDENTIAL_HEADERS});}
+  }
   const parsed = loginSchema.safeParse(body);
 
   if (!parsed.success) {
+    if(isManager)return NextResponse.json({error:"Unable to sign in."},{status:401,headers:PRIVATE_CREDENTIAL_HEADERS});
     if (adminAttempt) {
       await recordAdminLoginOutcome(adminAttempt, "FAILURE");
       return NextResponse.json({ error: "Unable to sign in." }, { status: 401 });
@@ -56,26 +68,12 @@ export async function POST(request: Request) {
   await destroyCurrentSession();
 
   if (parsed.data.type === "MANAGER") {
-    const manager = await authenticateManager(
-      parsed.data.email,
-      parsed.data.password
-    );
-
-    if (!manager) {
-      return NextResponse.json(
-        {
-          error: "The email or password is incorrect.",
-        },
-        { status: 401 }
-      );
-    }
-
-    await createManagerSession({
-      managerId: manager.id,
-      businessId: manager.businessId,
-      passwordHash: manager.passwordHash,
-      email: manager.email,
-    });
+    let manager;
+    try{
+      manager=await authenticateManager(parsed.data.email,parsed.data.password);
+      if(!manager)return NextResponse.json({error:"Unable to sign in."},{status:401,headers:PRIVATE_CREDENTIAL_HEADERS});
+      await createManagerSession({managerId:manager.id,businessId:manager.businessId,passwordHash:manager.passwordHash,email:manager.email});
+    }catch{return NextResponse.json({error:"Unable to sign in."},{status:401,headers:PRIVATE_CREDENTIAL_HEADERS});}
 
     const setupRoute = getSetupRoute(manager.business);
 

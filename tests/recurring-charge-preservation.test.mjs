@@ -162,7 +162,7 @@ for(const failure of ['recurringCharge.update','recurringCharge.create','recurri
 });
 for(const change of ['reset','disable']) pgTest('authority changed before delayed retained-charge save: '+change,async()=>{
   const f=await fixture(), c=await f.create(); let entered,release; const ready=new Promise(r=>entered=r), wait=new Promise(r=>release=r);
-  const pending=f.h.load('app/api/setup/recurring/charges/route.ts').PUT({json:async()=>{entered();await wait;return f.payload([[f.item(c,{amountCents:2500})]]);}}); await ready;
+  const pending=f.h.load('app/api/setup/recurring/charges/route.ts').PUT({headers:new Headers({origin:'https://example.test','content-type':'application/json'}),json:async()=>{entered();await wait;return f.payload([[f.item(c,{amountCents:2500})]]);}}); await ready;
   if(change==='reset') {await f.h.issue('ADMIN'); assert.equal((await f.h.reset()).status,200);} else await postgres.business.update({where:{id:f.businessId},data:{status:'DISABLED'}});
   const before=await f.snapshot(); release(); assert.equal((await pending).status,401); assert.deepEqual(await f.snapshot(),before);
 });

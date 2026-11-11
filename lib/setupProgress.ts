@@ -28,9 +28,10 @@ export function getSetupRoute(
   }
 
   switch (business.setupStep) {
+    // Legacy schema default, not an email-verification authorization gate.
+    // Current signup starts at tiers without setting emailVerifiedAt. Resume
+    // the same authenticated flow without rewriting any verification facts.
     case SetupStep.VERIFY_EMAIL:
-      return "/setup/verify-email";
-
     case SetupStep.CONFIGURE_RECURRING_TIERS:
       return "/setup/recurring/tiers";
 
@@ -61,13 +62,6 @@ export function getSetupResumeDetails(
 
   switch (business.setupStep) {
     case SetupStep.VERIFY_EMAIL:
-      return {
-        stepNumber: 1,
-        totalSteps: TOTAL_SETUP_STEPS,
-        title: "Verify Email",
-        route,
-      };
-
     case SetupStep.CONFIGURE_RECURRING_TIERS:
       return {
         stepNumber: 2,
@@ -139,8 +133,6 @@ export function getHighestSetupStage(
 ): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
   switch (setupStep) {
     case SetupStep.VERIFY_EMAIL:
-      return 1;
-
     case SetupStep.CONFIGURE_RECURRING_TIERS:
       return 2;
 

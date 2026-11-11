@@ -41,7 +41,8 @@ export async function readStripeReadinessFacts(stripeAccountId: string): Promise
   } };
 }
 
-export async function getBusinessPaymentReadiness(business: ReadinessBusiness & { stripeConnection: { stripeAccountId: string } | null }, planId?: string) {
+// Current business readiness is specifically for legacy destination charges.
+export async function getLegacyBusinessPaymentReadiness(business: ReadinessBusiness & { stripeConnection: { stripeAccountId: string } | null }, planId?: string, sourceType: "RECURRING_PLAN" | "CUSTOM_PAYMENT" = "RECURRING_PLAN") {
   let facts: StripeReadinessFacts | null = null;
   if (!business.stripeConnection) facts = {
     connected: false, onboardingComplete: false, chargesEnabled: false, payoutsEnabled: false,
@@ -52,8 +53,11 @@ export async function getBusinessPaymentReadiness(business: ReadinessBusiness & 
     try { facts = (await readStripeReadinessFacts(business.stripeConnection.stripeAccountId)).facts; }
     catch { /* Fail closed; stale persisted readiness must not authorize money. */ }
   }
-  return getPaymentReadiness(business, facts, getStripeMode(), process.env.NODE_ENV === "production", planId);
+  return getPaymentReadiness(business, facts, getStripeMode(), process.env.NODE_ENV === "production", planId, sourceType);
 }
+
+// Preserve manager/setup callers and the existing return contract.
+export const getBusinessPaymentReadiness = getLegacyBusinessPaymentReadiness;
 
 export async function loadBusinessPaymentReadiness(businessId: string) {
   const business = await prisma.business.findUnique({ where: { id: businessId }, include: readinessBusinessInclude });

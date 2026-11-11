@@ -1,4 +1,7 @@
+import { requireCredentialOrigin } from "@/lib/credentialRequest";
 import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
+import { ConfigurationError, assertLegacyConfiguration, legacyConfigurationVersion, readConfigurationJson, CHARGES_PER_TIER } from "@/lib/recurringConfiguration";
+import { patchRecurringConfiguration } from "@/lib/recurringTierOperations";
 import { InvalidRecurringCharges, saveRecurringCharges } from "@/lib/recurringChargePersistence";
 import {
   SessionType,
@@ -26,15 +29,18 @@ const chargeSchema = z.object({
 
 const tierSchema = z.object({
   recurringPlanId: z.string().min(1).max(100),
-  charges: z.array(chargeSchema).max(250),
+  charges: z.array(chargeSchema).max(CHARGES_PER_TIER),
 });
 
 const requestSchema = z.object({
-  tiers: z.array(tierSchema).min(1).max(250),
+  tiers: z.array(tierSchema).min(1),
+  expectedVersion: z.string().optional(),
   advance: z.boolean().optional().default(false),
 });
 
 export async function PUT(request: Request) {
+  try { requireCredentialOrigin(request); } catch { return NextResponse.json({ error: "Invalid request origin." }, { status: 403 }); }
+
   const session = await getCurrentSession();
 
   if (
@@ -52,8 +58,9 @@ export async function PUT(request: Request) {
   let body: unknown;
 
   try {
-    body = await request.json();
-  } catch {
+    body = await readConfigurationJson(request);
+  } catch (error) {
+    if (error instanceof ConfigurationError) return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json(
       { error: "Invalid request body." },
       { status: 400 }
@@ -76,6 +83,7 @@ export async function PUT(request: Request) {
   try {
     const savedTiers = await withManagerMutation(session,
       async (transaction) => {
+        await assertLegacyConfiguration(transaction, businessId, parsed.data.expectedVersion);
         const saved = await saveRecurringCharges(transaction, businessId, parsed.data.tiers);
 
         if (parsed.data.advance && !setupAlreadyCompleted) {
@@ -102,18 +110,20 @@ export async function PUT(request: Request) {
           });
         }
 
-        return saved;
+        return { tiers: saved, version: await legacyConfigurationVersion(transaction, businessId) };
       }
     );
 
     return NextResponse.json({
       saved: true,
-      tiers: savedTiers,
+      tiers: savedTiers.tiers,
+      version: savedTiers.version,
       redirectTo: parsed.data.advance
         ? "/setup/recurring/billing"
         : undefined,
     });
   } catch (error) {
+    if (error instanceof ConfigurationError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof InvalidRecurringCharges) return NextResponse.json({ error: error.message }, { status: 400 });
     if (error instanceof ManagerMutationUnauthorized) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     return NextResponse.json(
@@ -122,3 +132,5 @@ export async function PUT(request: Request) {
     );
   }
 }
+
+export async function PATCH(request: Request) { return patchRecurringConfiguration(request, "charges"); }

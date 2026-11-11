@@ -1,11 +1,13 @@
+import { requireCredentialOrigin } from "@/lib/credentialRequest";
 import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
+import { ConfigurationError, assertLegacyConfiguration, legacyConfigurationVersion, readConfigurationJson } from "@/lib/recurringConfiguration";
+import { patchRecurringConfiguration } from "@/lib/recurringTierOperations";
 ﻿import {
   SessionType,
   SetupStep,
 } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/session";
 import {
   validateRecurringPaymentConfiguration,
@@ -14,8 +16,8 @@ import {
 const billingRuleSchema = z
   .object({
     recurringPlanId: z.string().min(1).max(100),
-    dueDay: z.number().int().min(1).max(31),
-    gracePeriodDays: z.number().int().min(1).max(60),
+    dueDay: z.literal(1).default(1),
+    gracePeriodDays: z.union([z.literal(3), z.literal(4), z.literal(5)]),
     initialLateFeeCents: z
       .number()
       .int()
@@ -56,11 +58,15 @@ const billingRuleSchema = z
 
 const requestSchema = z.object({
   sameRulesForAll: z.boolean(),
-  rules: z.array(billingRuleSchema).min(1).max(250),
+  rules: z.array(billingRuleSchema).min(1),
+  expectedVersion: z.string().optional(),
   advance: z.boolean().optional().default(false),
+  confirmCalendarChange: z.boolean().optional().default(false),
 });
 
 export async function PUT(request: Request) {
+  try { requireCredentialOrigin(request); } catch { return NextResponse.json({ error: "Invalid request origin." }, { status: 403 }); }
+
   const session = await getCurrentSession();
 
   if (
@@ -78,8 +84,9 @@ export async function PUT(request: Request) {
   let body: unknown;
 
   try {
-    body = await request.json();
-  } catch {
+    body = await readConfigurationJson(request);
+  } catch (error) {
+    if (error instanceof ConfigurationError) return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json(
       { error: "Invalid request body." },
       { status: 400 }
@@ -103,7 +110,12 @@ export async function PUT(request: Request) {
   const managerId = session.manager.id;
   const setupAlreadyCompleted = Boolean(session.business.setupCompletedAt);
 
-  const plans = await prisma.recurringPlan.findMany({
+  try {
+    return await withManagerMutation(session, async (transaction) => {
+      await assertLegacyConfiguration(transaction, businessId, parsed.data.expectedVersion);
+  // Re-read and validate while holding management's Business lock. A concurrent
+  // settings save cannot bypass legacy-conversion consent or amount validation.
+  const plans = await transaction.recurringPlan.findMany({
     where: {
       businessId,
       isActive: true,
@@ -115,6 +127,8 @@ export async function PUT(request: Request) {
       id: true,
       name: true,
       baseAmountCents: true,
+      dueDay: true,
+      gracePeriodDays: true,
       charges: {
         where: {
           isActive: true,
@@ -125,6 +139,12 @@ export async function PUT(request: Request) {
       },
     },
   });
+
+  const needsCalendarConfirmation = plans.some(plan =>
+    plan.dueDay !== 1 || ![3, 4, 5].includes(plan.gracePeriodDays));
+  if (needsCalendarConfirmation && !parsed.data.confirmCalendarChange) {
+    return NextResponse.json({ error: "Confirm changing the existing billing calendar to rent due on the 1st with a 3, 4, or 5-day grace period." }, { status: 409 });
+  }
 
   const planIds = plans.map((plan) => plan.id);
   const submittedIds = parsed.data.rules.map(
@@ -212,15 +232,13 @@ export async function PUT(request: Request) {
     }
   }
 
-  try {
-    await withManagerMutation(session,async (transaction) => {
       for (const rule of parsed.data.rules) {
         await transaction.recurringPlan.update({
           where: {
             id: rule.recurringPlanId,
           },
           data: {
-            dueDay: rule.dueDay,
+            dueDay: 1,
             gracePeriodDays: rule.gracePeriodDays,
             initialLateFeeCents:
               rule.initialLateFeeCents,
@@ -255,15 +273,16 @@ export async function PUT(request: Request) {
           },
         });
       }
-    });
-
     return NextResponse.json({
       saved: true,
+      version: await legacyConfigurationVersion(transaction, businessId),
       redirectTo: parsed.data.advance
         ? "/setup/recurring/review"
         : undefined,
     });
+    });
   } catch (error) {
+    if (error instanceof ConfigurationError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof ManagerMutationUnauthorized) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     return NextResponse.json(
       { error: "Unable to save the billing rules." },
@@ -271,3 +290,5 @@ export async function PUT(request: Request) {
     );
   }
 }
+
+export async function PATCH(request: Request) { return patchRecurringConfiguration(request, "billing"); }

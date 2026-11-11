@@ -1,3 +1,4 @@
+import { attachPublicBudgetStorage } from "./helpers/public-budget-storage.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -7,6 +8,7 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const require = createRequire(import.meta.url);
+const quoteCookies = new WeakMap();
 const root = path.resolve(import.meta.dirname, "..");
 
 // Load the real route and pricing code, replacing external services only.
@@ -20,6 +22,7 @@ function loadSource(relativePath, mocks, logger = console) {
   const loadedModule = { exports: {} };
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if (name === "node:util") return { isDeepStrictEqual: require("node:util").isDeepStrictEqual };
     if (name.startsWith("@/lib/")) {
       return loadSource(`${name.slice(2)}.ts`, mocks, logger);
     }
@@ -27,10 +30,11 @@ function loadSource(relativePath, mocks, logger = console) {
   };
   vm.runInThisContext(`(function(require, module, exports, console, process) {\n${outputText}\n})`, {
     filename,
-  })(localRequire, loadedModule, loadedModule.exports, logger, { env: { NODE_ENV: "test", STRIPE_SECRET_KEY: "sk_test_fixture" } });
+  })(localRequire, loadedModule, loadedModule.exports, logger, { env: { NODE_ENV: "test", NEXT_PUBLIC_BASE_URL: "https://example.test", STRIPE_SECRET_KEY: "sk_test_fixture" } });
   return loadedModule.exports;
 }
 
+const withBudget = db => { attachPublicBudgetStorage(db); return db; };
 const enums = require("@prisma/client");
 const { calculateCheckoutPricing } = loadSource("lib/checkoutPricing.ts", {});
 const nextResponseMock = {
@@ -45,17 +49,22 @@ async function prepareCheckout(paymentMethod, charges = []) {
     charges: charges.map(charge => ({ isActive: true, ...charge })),
   };
   const business = {
+    propertyTimeZone: null, firstStandardBillingDate: null,
     id: "business-test", name: "Test business", accountCode: "TE-1234", isActive: true, status: "ACTIVE", setupCompletedAt: new Date(),
     stripeConnection: { stripeAccountId: "acct_test", readyForLive: true },
     recurringPlans: [plan],
   };
   let checkout;
+  const cookieJar = new Map();
   const { POST } = loadSource("app/api/public/checkout/session/route.ts", {
+    "node:crypto": require("node:crypto"),
+    "next/headers": { cookies: async () => ({ set: (name, value) => cookieJar.set(name, value) }) },
     "@prisma/client": enums,
     "next/server": nextResponseMock,
-    "@/lib/prisma": { prisma: {
+    "@/lib/prisma": { prisma: withBudget({
       business: { findUnique: async () => structuredClone(business) },
       $queryRaw: async () => [],
+
       $transaction: async function (operation) { return operation(this); },
       checkoutSession: {
       create: async ({ data }) => {
@@ -66,14 +75,14 @@ async function prepareCheckout(paymentMethod, charges = []) {
         };
         return structuredClone(checkout);
       },
-    } } },
+    } }) },
     "@/lib/publicCheckout": {
       getPublicCheckoutBusiness: async () => business,
       isRecurringCheckoutBusiness: () => true,
     },
   });
   const response = await POST(new Request("https://example.test/api/public/checkout/session", {
-    method: "POST", body: JSON.stringify({
+    method: "POST", headers: {origin:"https://example.test","content-type":"application/json"}, body: JSON.stringify({
       accountCode: "TE-1234", planId: plan.id, unitNumber: "101",
       firstName: "Test", lastName: "Payer", phone: "5555551234", paymentMethod,
     }),
@@ -84,6 +93,7 @@ async function prepareCheckout(paymentMethod, charges = []) {
   assert.equal(checkout.totalCents, pricing.totalChargedCents);
   // Simulate the existing review transition; no monetary fields change.
   checkout.status = enums.CheckoutSessionStatus.REVIEWED;
+  quoteCookies.set(checkout, cookieJar);
   return { checkout, business, pricing };
 }
 
@@ -114,7 +124,10 @@ async function startCheckout(checkout, business, existingPayment = null) {
     $queryRaw: async () => [],
     $transaction: async (operations) => typeof operations === "function" ? operations(prisma) : Promise.all(operations),
   };
+  attachPublicBudgetStorage(prisma);
   const { POST } = loadSource("app/api/public/checkout/start/route.ts", {
+    "next/headers": { cookies: async () => ({ get: name => { const value = quoteCookies.get(checkout)?.get(name); return value === undefined ? undefined : { value }; } }) },
+    "node:crypto": require("node:crypto"),
     "@prisma/client": enums,
     "next/server": nextResponseMock,
     "@/lib/prisma": { prisma },
@@ -133,7 +146,7 @@ async function startCheckout(checkout, business, existingPayment = null) {
     } },
   }, { error: (...args) => calls.errors.push(args) });
   const response = await POST(new Request("https://example.test/api/public/checkout/start", {
-    method: "POST", body: JSON.stringify({ checkoutSessionId: checkout.id }),
+    method: "POST", headers: {origin:"https://example.test","content-type":"application/json"}, body: JSON.stringify({ checkoutSessionId: checkout.id }),
   }));
   return { response, calls };
 }
@@ -229,11 +242,10 @@ for (const { paymentMethod, fee, total, stripeMethod } of methods) {
       assert.equal(calls.updates.length, 0);
       assert.deepEqual(checkout, before);
       assert.equal(calls.errors.length, 1);
-      assert.equal(calls.errors[0][0], "Checkout line-item reconciliation failed:");
-      assert.deepEqual(Object.keys(calls.errors[0][1]).sort(), [
-        "checkoutSessionId", "expectedTotalCents", "stripeLineItemsTotalCents",
-      ]);
-      assert.equal(calls.errors[0][1].checkoutSessionId, checkout.id);
+      assert.equal(calls.errors[0][0], "RFL_OPERATION_FAILED");
+      assert.deepEqual(calls.errors[0][1], { operation: "checkout_snapshot_invalid", category: "CHECK_FAILED",
+        correlation: require("node:crypto").createHash("sha256").update(checkout.id).digest("hex") });
+      assert.ok(!JSON.stringify(calls.errors).includes(checkout.id));
     });
   }
 
@@ -262,7 +274,8 @@ for (const { paymentMethod, fee, total, stripeMethod } of methods) {
     checkout.totalCents += 1;
     const before = structuredClone(payment);
     const { response, calls } = await startCheckout(checkout, business, payment);
-    assert.equal(response.status, 500);
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).code, "CHECKOUT_CREATION_UNCONFIRMED");
     assert.equal(calls.stripe.length, 0);
     assert.equal(calls.stripeClient, 0);
     assert.equal(calls.paymentCreates.length, 0);

@@ -1,3 +1,4 @@
+import { logOperationalError } from "@/lib/operationalLogging";
 import { requireManager } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { loadBusinessPaymentReadiness } from "@/lib/businessPaymentReadiness";
@@ -38,7 +39,7 @@ export default async function BankSetupPage({
         session,
       );
     } catch (error) {
-      console.error("Unable to synchronize Stripe account:", error);
+      logOperationalError("stripe_sync_failed", error, business.id);
 
       synchronizationError =
         "We couldn't check your Stripe status. Please try again.";

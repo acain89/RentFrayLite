@@ -10,6 +10,8 @@ export async function GET() {
   }
 
   const data = await getAdminDashboardData();
+  const finalAuth = await requireAdminApi();
+  if (finalAuth.response) return finalAuth.response;
 
   return NextResponse.json(data);
 }

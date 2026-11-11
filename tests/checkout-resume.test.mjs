@@ -64,9 +64,12 @@ for (const backend of [...(postgres ? ['postgres'] : []), 'isolated']) for (cons
   if(status==='succeeded')i.amount_received=a.payment.totalChargedCents;
   assert.equal((await h.start(a.checkout)).status,409);assert.equal(h.calls.creates.length,1);assert.equal((await h.payments()).length,1);
  });
- test(`${label}: fresh reviewed identifier cannot bypass original browser binding`,async()=>{
-  const h=await harness(method,backend);await h.original('CHECKOUT_STARTED');const other=await h.prepare();h.cookieJar.clear();
-  assert.equal((await h.start(other)).status,409);assert.equal(h.calls.creates.length,1);assert.equal((await h.payments()).length,1);
+ test(`${label}: fresh reviewed identifier is independent and cannot resume an unbound original`,async()=>{
+  const h=await harness(method,backend);const original=await h.original('CHECKOUT_STARTED');const other=await h.prepare();
+  // A new quote keeps its issuing-browser binding; only receipt authority is absent.
+  for(const key of [...h.cookieJar.keys()])if(key.startsWith('rfl_result_'))h.cookieJar.delete(key);
+  assert.equal((await h.start(original.checkout)).status,409);
+  assert.equal((await h.start(other)).status,200);assert.equal(h.calls.creates.length,2);assert.equal((await h.payments()).length,2);
  });
  test(`${label}: forged account code and unknown identifier rejected`,async()=>{
   const h=await harness(method,backend);const a=await h.original('CHECKOUT_STARTED');

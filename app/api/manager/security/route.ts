@@ -1,3 +1,6 @@
+import { publicJson, publicJsonFailure } from "@/lib/publicJson";
+import { requireCredentialOrigin } from "@/lib/credentialRequest";
+import { isNewManagementPassword, isManagementLoginPassword, MANAGEMENT_PASSWORD_REQUIREMENT, invalidateManagementResetTokens } from "@/lib/managementCredential";
 import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
 import { SessionType } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
@@ -37,18 +40,14 @@ async function updateSecurity(request: NextRequest) {
     );
   }
 
+  try{requireCredentialOrigin(request);}catch{return NextResponse.json({error:"Invalid request origin."},{status:403});}
   const businessId = session.business.id;
 
   let body: SecurityPayload;
 
   try {
-    body = (await request.json()) as SecurityPayload;
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid request body." },
-      { status: 400 }
-    );
-  }
+    body = (await publicJson(request, 4096)) as SecurityPayload;
+  } catch (error) { return publicJsonFailure(error); }
 
   const action =
     typeof body.action === "string" ? body.action : "";
@@ -58,7 +57,7 @@ async function updateSecurity(request: NextRequest) {
       ? body.currentPassword
       : "";
 
-  if (!currentPassword) {
+  if (!isManagementLoginPassword(currentPassword)) {
     return NextResponse.json(
       { error: "Enter your current password." },
       { status: 400 }
@@ -125,6 +124,7 @@ async function updateSecurity(request: NextRequest) {
         where: { id: manager.id, passwordHash: manager.passwordHash, email: manager.email, isActive: true },
         data: { email: newEmail },
       });
+      await invalidateManagementResetTokens(tx,businessId);
       await tx.session.deleteMany({ where: { managerId: manager.id } });
       await tx.auditLog.create({
         data: {
@@ -159,19 +159,7 @@ async function updateSecurity(request: NextRequest) {
         ? body.confirmPassword
         : "";
 
-    if (newPassword.length < 6) {
-      return NextResponse.json(
-        { error: "The new password must be at least 6 characters." },
-        { status: 400 }
-      );
-    }
-
-    if (newPassword.length > 128) {
-      return NextResponse.json(
-        { error: "The new password is too long." },
-        { status: 400 }
-      );
-    }
+    if(!isNewManagementPassword(newPassword))return NextResponse.json({error:MANAGEMENT_PASSWORD_REQUIREMENT},{status:400});
 
     if (newPassword !== confirmPassword) {
       return NextResponse.json(
@@ -187,6 +175,7 @@ async function updateSecurity(request: NextRequest) {
         where: { id: manager.id, passwordHash: manager.passwordHash, email: manager.email, isActive: true },
         data: { passwordHash },
       });
+      await invalidateManagementResetTokens(tx,businessId);
       await tx.session.deleteMany({ where: { managerId: manager.id } });
       await tx.auditLog.create({
         data: {

@@ -10,6 +10,8 @@ export type ReviewLineItem = {
 };
 
 type ReviewPaymentClientProps = {
+  sourceType?: "RECURRING_PLAN" | "CUSTOM_PAYMENT";
+  attemptReserved?: boolean;
   checkoutSessionId: string;
   businessName: string;
   accountCode: string;
@@ -18,9 +20,9 @@ type ReviewPaymentClientProps = {
   lastName: string;
   phone: string;
   paymentMethod: "ACH" | "CARD";
-  billingCycle: string;
-  dueDate: string;
-  graceEndsAt: string;
+  billingCycle: string | null;
+  dueDate: string | null;
+  graceEndsAt: string | null;
   lineItems: ReviewLineItem[];
   subtotalCents: number;
   platformFeeCents: number;
@@ -95,6 +97,8 @@ function isPlatformFee(
 }
 
 export default function ReviewPaymentClient({
+  sourceType = "RECURRING_PLAN",
+  attemptReserved = false,
   checkoutSessionId,
   businessName,
   accountCode,
@@ -115,13 +119,29 @@ const [isSubmitting, setIsSubmitting] =
   useState(false);
 
 const [error, setError] = useState("");
+const [isChangingMethod, setIsChangingMethod] = useState(false);
+const [chosenMethod, setChosenMethod] = useState(paymentMethod);
+const isCustom = sourceType === "CUSTOM_PAYMENT";
+
+async function changeCustomMethod(method: "ACH" | "CARD") {
+  if (!isCustom || attemptReserved || isSubmitting || isChangingMethod || method === paymentMethod) return;
+  setChosenMethod(method); setIsChangingMethod(true); setError("");
+  try {
+    const amount = `${Math.trunc(subtotalCents / 100)}.${String(subtotalCents % 100).padStart(2, "0")}`;
+    const response = await fetch("/api/public/checkout/session", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceType: "CUSTOM_PAYMENT", accountCode, amount, firstName, lastName, unitNumber, phone, paymentMethod: method, previousCheckoutSessionId: checkoutSessionId }) });
+    const payload = await response.json();
+    if (!response.ok || typeof payload.reviewUrl !== "string") throw Error(payload.error ?? "Unable to update payment method.");
+    window.location.assign(payload.reviewUrl);
+  } catch (err) { setError(err instanceof Error ? err.message : "Unable to update payment method."); setChosenMethod(paymentMethod); setIsChangingMethod(false); }
+}
 
 const chargeLineItems = lineItems.filter(
   (item) => !isPlatformFee(item)
 );
 
 async function beginCheckout() {
-  if (isSubmitting) {
+  if (isSubmitting || isChangingMethod) {
     return;
   }
 
@@ -198,14 +218,14 @@ async function beginCheckout() {
           </div>
 
           <div className="rfl-review-details-grid">
-            <div>
+            {isCustom ? <div><span>Payment Type</span><strong>Custom</strong></div> : <div>
               <span>Billing Cycle</span>
               <strong>
                 {formatBillingCycle(
-                  billingCycle
+                  billingCycle ?? ""
                 )}
               </strong>
-            </div>
+            </div>}
 
             <div>
               <span>Unit / Space</span>
@@ -245,6 +265,13 @@ async function beginCheckout() {
             </div>
           </div>
 
+          {isCustom ? <fieldset className="rfl-checkout-payment-method" disabled={attemptReserved || isSubmitting || isChangingMethod}>
+            <legend>Payment method</legend>
+            <label><input type="radio" name="customPaymentMethod" checked={chosenMethod === "ACH"} onChange={() => changeCustomMethod("ACH")} />Bank account (ACH)</label>
+            <label><input type="radio" name="customPaymentMethod" checked={chosenMethod === "CARD"} onChange={() => changeCustomMethod("CARD")} />Credit or debit card</label>
+            {isChangingMethod ? <p>Updating payment summary…</p> : null}
+          </fieldset> : null}
+
           <div className="rfl-review-line-items">
             {chargeLineItems.map(
               (item, index) => (
@@ -275,7 +302,7 @@ async function beginCheckout() {
 
             <div className="rfl-review-line-item">
               <span>
-                Platform Service Fee
+                {isCustom ? "Processing fee" : "Platform Service Fee"}
               </span>
 
               <strong>
@@ -286,7 +313,7 @@ async function beginCheckout() {
             </div>
 
             <div className="rfl-review-total-row">
-              <span>Total Due</span>
+              <span>{isCustom ? "Payment total" : "Total Due"}</span>
 
               <strong>
                 {formatMoney(totalCents)}
@@ -294,7 +321,7 @@ async function beginCheckout() {
             </div>
           </div>
 
-          <div className="rfl-review-date-grid">
+          {!isCustom && dueDate && graceEndsAt ? <div className="rfl-review-date-grid">
             <div>
               <span>Due Date</span>
               <strong>
@@ -308,7 +335,7 @@ async function beginCheckout() {
                 {formatDate(graceEndsAt)}
               </strong>
             </div>
-          </div>
+          </div> : null}
 
           <div className="rfl-review-assurances">
             <p>
@@ -360,7 +387,7 @@ async function beginCheckout() {
             <button
   className="rfl-checkout-primary-button"
   type="button"
-  disabled={isSubmitting}
+  disabled={isSubmitting || isChangingMethod}
   onClick={beginCheckout}
 >
   {isSubmitting

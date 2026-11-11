@@ -1,3 +1,4 @@
+import { isManagementLoginPassword } from "@/lib/managementCredential";
 import { BusinessStatus, SessionType } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -9,6 +10,7 @@ export async function authenticateManager(
   email: string,
   password: string
 ) {
+  if(!isManagementLoginPassword(password))return null;
   const manager = await prisma.manager.findUnique({
     where: {
       email: email.toLowerCase(),
@@ -18,25 +20,9 @@ export async function authenticateManager(
     },
   });
 
-  if (!manager || !manager.isActive) {
-    return null;
-  }
-
-  if (
-    !manager.business.isActive ||
-    manager.business.status === BusinessStatus.DISABLED
-  ) {
-    return null;
-  }
-
-  const passwordValid = await verifyPassword(
-    password,
-    manager.passwordHash
-  );
-
-  if (!passwordValid) {
-    return null;
-  }
+  // Match bcrypt work for unknown/inactive managers; never reveal account existence.
+  const valid=await verifyPassword(password,manager?.passwordHash??"$2b$12$C6UzMDM.H6dfI/f/IKcEe.3YHFzSSehKp27eUk/zJt8CByBEGvZ0K");
+  if(!manager?.isActive||!manager.business.isActive||manager.business.status===BusinessStatus.DISABLED||!valid)return null;
 
   await prisma.manager.update({
     where: {

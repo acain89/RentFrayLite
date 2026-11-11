@@ -14,6 +14,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const secret = "whsec_isolated_webhook_test";
 const sdk = new Stripe("sk_test_isolated_no_network");
 const clone = (value) => structuredClone(value);
+const financialState = state => ({...clone(state),audits:clone(state.audits.filter(a=>a.actorType!=="STRIPE_WEBHOOK_EXCEPTION"))});
 const matches = (row, where) => Object.entries(where).every(([key, value]) => row[key] === value);
 
 function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
@@ -23,6 +24,7 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
     businessId: "business-test", accountCode: "TEST", billingCycle: "2026-10",
   };
   const payment = {
+    sourceType: "RECURRING_PLAN", sourceId: "tier-test", billingCycle: "2026-10",
     id: metadata.paymentId, businessId: metadata.businessId, status: initialStatus, paymentMethod: method,
     stripeCheckoutSessionId: "cs_test", stripePaymentIntentId: "pi_test", stripeChargeId: "ch_test",
     subtotalCents: 100000, platformFeeCents: fee, totalChargedCents: 100000 + fee, businessProceedsCents: 100000,
@@ -32,25 +34,28 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
     failureCode: null, failureMessage: null,
     business: { id: metadata.businessId, name: "Test Storage", accountCode: "TEST", stripeConnection: { stripeAccountId: "acct_test" } },
   };
+  Object.assign(payment,{pricingVersion:"RFL_LEGACY_V1",chargeModel:"LEGACY_DESTINATION",stripeConnectedAccountId:"acct_test",expectedStripeProcessingFeeCents:null,rflApplicationFeeCents:fee});
   const checkout = {
+    sourceType: "RECURRING_PLAN", planId: "tier-test", dueDate: new Date("2026-10-01"), graceEndsAt: new Date("2026-10-05"),
     id: metadata.checkoutSessionId, paymentId: payment.id, businessId: payment.businessId,
     accountCode: "TEST", billingCycle: "2026-10", paymentMethod: method,
     stripeCheckoutSessionId: payment.stripeCheckoutSessionId, status: "CHECKOUT_STARTED",
-    totalCents: payment.totalChargedCents, platformFeeCents: fee,
+    pricingVersion:"RFL_LEGACY_V1",chargeModel:"LEGACY_DESTINATION",stripeConnectedAccountId:"acct_test",expectedStripeProcessingFeeCents:null,rflApplicationFeeCents:fee,expectedManagementNetCents:payment.subtotalCents,
+    subtotalCents: payment.subtotalCents, lineItems: clone(payment.lineItemsSnapshot), totalCents: payment.totalChargedCents, platformFeeCents: fee,
   };
   const state = { payments: new Map([[payment.id, payment]]), checkouts: new Map([[checkout.id, checkout]]), receipts: new Map(), audits: [] };
   const live = {
     session: {
-      id: "cs_test", object: "checkout.session", mode: "payment", status: "complete", payment_status: "unpaid",
+      id: "cs_test", object: "checkout.session", livemode: false, mode: "payment", status: "complete", payment_status: "unpaid",
       payment_intent: "pi_test", client_reference_id: payment.id, metadata: clone(metadata),
       currency: "usd", amount_total: payment.totalChargedCents,
     },
     intent: {
-      id: "pi_test", object: "payment_intent", status: "processing", currency: "usd",
+      id: "pi_test", object: "payment_intent", livemode: false, status: "processing", currency: "usd",
       amount: payment.totalChargedCents, amount_received: 0, application_fee_amount: fee, transfer_data: { destination: "acct_test" },
       metadata: clone(metadata), last_payment_error: null,
       latest_charge: {
-        id: "ch_test", object: "charge", payment_intent: "pi_test", amount: payment.totalChargedCents,
+        id: "ch_test", object: "charge", livemode: false, payment_intent: "pi_test", amount: payment.totalChargedCents,
         currency: "usd", status: "pending", paid: false, disputed: false,
         payment_method_details: { type: method === "ACH" ? "us_bank_account" : "card" },
       },
@@ -63,12 +68,20 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
   const locks = new Map();
   const find = (rows, where) => clone([...rows.values()].find(row => matches(row, where)) ?? null);
   const prisma = {
+    auditLog: {
+      findMany: async ({where}) => clone(state.audits.filter(row => row.businessId === where.businessId && row.actorType === where.actorType && row.targetType === where.targetType && row.targetId === where.targetId && where.OR.some(w => row.metadata?.reportingDisputeOutcome === w.metadata.equals))),
+      findFirst: async ({where}) => clone(state.audits.find(row=>row.actorType===where.actorType&&row.targetId===where.targetId&&row.metadata?.stripeEventId===where.metadata.equals)??null),
+      upsert: async ({where,create,update}) => { const row=state.audits.find(a=>a.id===where.id);if(row){Object.assign(row,clone(update));return clone(row);}state.audits.push(clone(create));return clone(create); },
+      updateMany: async ({where,data}) => {const rows=state.audits.filter(a=>a.id===where.id);for(const row of rows)Object.assign(row,clone(data));return {count:rows.length};},
+    },
     payment: { findUnique: async ({ where, select }) => {
       calls.reads++;
       const row = find(state.payments, where);
       return row && select?.smsReceipt ? { ...row, smsReceipt: clone(state.receipts.get(row.id) ?? null) } : row;
     } },
     checkoutSession: { findUnique: async ({ where }) => { calls.reads++; return find(state.checkouts, where); } },
+    smsSuppression: {findUnique:async()=>null},
+    smsNotification: {upsert:async({create})=>create,findFirst:async()=>null},
     smsReceipt: {
       updateMany: async ({ where, data }) => {
         const row = [...state.receipts.values()].find(row => matches(row, where));
@@ -128,6 +141,8 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
             Object.assign(row, clone(data)); checkoutWrites.add(row.id); return { count: 1 };
           },
         },
+        smsSuppression: {findUnique:async()=>null},
+        smsNotification: {upsert:async({create})=>create,findFirst:async()=>null},
         smsReceipt: {
           upsert: async ({ where, create, update }) => {
             ensureLocked();
@@ -165,6 +180,8 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
   const stripeRead = () => { calls.stripeReads++; if (faults.stripe) throw new Error("Injected Stripe read failure"); };
   const stripe = {
     webhooks: sdk.webhooks,
+    accounts: { retrieve: async()=>({id:"acct_platform"}) },
+    balance: { retrieve: async()=>({livemode:false}) },
     checkout: { sessions: { retrieve: async id => { stripeRead(); assert.equal(id, live.session.id); return clone(live.session); } } },
     paymentIntents: { retrieve: async id => {
       stripeRead(); assert.equal(id, live.intent.id);
@@ -173,7 +190,7 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
       return snapshot;
     } },
     charges: { retrieve: async id => { stripeRead(); assert.equal(id, live.intent.latest_charge.id); return clone(live.intent.latest_charge); } },
-    disputes: { list: async ({ charge }) => { stripeRead(); assert.equal(charge, live.intent.latest_charge.id); return { data: clone(live.disputes), has_more: false }; } },
+    disputes: { list: async ({ charge }) => { stripeRead(); assert.equal(charge, live.intent.latest_charge.id); return { data: clone(live.disputes).map(d=>({livemode:false,...d})), has_more: false }; } },
   };
   const jar = new Map(), cache = new Map();
   const mocks = {
@@ -193,7 +210,7 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
     const localRequire = name => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
       if (name.startsWith("@/lib/")) return load(name.slice(2) + ".ts");
-      if (name === "node:crypto" || name === "react/jsx-runtime") return require(name);
+      if (name === "node:crypto" || name === "node:util" || name === "react/jsx-runtime") return require(name);
       throw new Error("Unexpected import (external access forbidden): " + name);
     };
     vm.runInThisContext("(function(require,module,exports,process,console){\n" + outputText + "\n})", { filename })(
@@ -212,7 +229,7 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
     const object = type.startsWith("checkout.") ? clone(live.session)
       : type.startsWith("charge.dispute.") ? clone(live.disputes[0])
       : clone(live.intent);
-    return { id: "evt_" + ++sequence, object: "event", type, created: 100,
+    return { id: "evt_" + ++sequence, object: "event", livemode: false, type, created: 100,
       data: { object }, ...overrides };
   }
   async function send(evt, signature) {
@@ -252,6 +269,7 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
 }
 
 async function accepted(h, evt) { assert.equal((await h.send(evt)).status, 200); }
+async function rejected(h,evt){assert.equal((await h.send(evt)).status,500);assert.ok(h.state.audits.some(a=>a.actorType==="STRIPE_WEBHOOK_EXCEPTION"&&a.targetId===evt.id));}
 
 for (const initial of ["CREATED", "CHECKOUT_STARTED", "PENDING"]) {
   test("card " + initial + " → PAID through the signed production route", async () => {
@@ -272,10 +290,10 @@ test("ACH completed is processing, then settlement confirms PAID and the read-on
   h.settle();
   await accepted(h, h.event("checkout.session.async_payment_succeeded"));
   assert.equal(h.payment().status, "PAID");
-  const before = clone(h.state);
+  const before = financialState(h.state);
   assert.ok((await h.render()).includes("Payment successful"));
   assert.ok((await h.render()).includes("Payment successful"));
-  assert.deepEqual(h.state, before);
+  assert.deepEqual(financialState(h.state), before);
 });
 
 for (const type of ["payment_intent.processing", "payment_intent.succeeded"]) {
@@ -284,13 +302,13 @@ for (const type of ["payment_intent.processing", "payment_intent.succeeded"]) {
     if (type.endsWith("succeeded")) h.settle();
     const evt = h.event(type);
     await accepted(h, evt);
-    const before = clone(h.state), calls = { ...h.calls };
+    const before = financialState(h.state), calls = { ...h.calls };
     await accepted(h, evt);
-    assert.deepEqual(h.state, before);
+    assert.deepEqual(financialState(h.state), before);
     assert.equal(h.calls.stripeReads, calls.stripeReads);
     assert.equal(h.calls.paymentWrites, calls.paymentWrites);
     assert.equal(h.calls.receiptCreates, type.endsWith("succeeded") ? 1 : 0);
-    assert.equal(h.state.audits.length, 1);
+    assert.equal(h.state.audits.filter(a=>a.actorType==="STRIPE_WEBHOOK").length, 1);
   });
 }
 
@@ -374,10 +392,32 @@ test("card dispute is final against stale success and reopens only on current wo
   await accepted(h, staleDispute); await accepted(h, staleSuccess);
   assert.equal(h.payment().status, "DISPUTED");
   assert.ok((await h.render()).includes("Payment disputed"));
+  assert.ok((await h.render()).includes("Dispute active"));
   h.live.disputes[0].status = "won"; h.live.intent.latest_charge.disputed = false;
   await accepted(h, h.event("charge.dispute.closed"));
   await accepted(h, { ...staleDispute, id: "evt_late_dispute_copy" });
   assert.equal(h.payment().status, "PAID"); assert.equal(h.calls.receiptCreates, 1);
+  assert.ok((await h.render()).includes("Dispute closed won"));
+});
+
+test("closed-lost card dispute preserves original settlement and durable reporting through replay", async () => {
+  const h = harness("CARD"); h.settle(); await accepted(h, h.event("payment_intent.succeeded"));
+  const before = structuredClone(h.payment()); h.dispute("fraudulent", "lost");
+  const event = h.event("charge.dispute.closed"); await accepted(h, event); await accepted(h, event);
+  assert.equal(h.payment().status, "DISPUTED"); assert.deepEqual(h.payment().paidAt, before.paidAt);
+  assert.equal(h.payment().totalChargedCents, before.totalChargedCents);
+  const html = await h.render(); assert.ok(html.includes("Dispute closed lost"));
+  assert.ok(!html.includes("This payment is under dispute."));
+  assert.equal(h.calls.receiptCreates, 1);
+});
+
+test("closed-won dispute first delivery records outcome without rewriting successful payment", async () => {
+  const h = harness("CARD"); h.settle(); await accepted(h, h.event("payment_intent.succeeded"));
+  const before = structuredClone(h.payment()); h.dispute("fraudulent", "won");
+  await accepted(h, h.event("charge.dispute.closed"));
+  assert.equal(h.payment().status, "PAID"); assert.deepEqual(h.payment().paidAt, before.paidAt);
+  assert.ok(h.payment().disputedAt); assert.ok((await h.render()).includes("Dispute closed won"));
+  assert.equal(h.calls.receiptCreates, 1);
 });
 
 test("dispute arriving before any success event is not lost or followed by a false success receipt", async () => {
@@ -426,7 +466,7 @@ test("concurrent duplicate and different events serialize on the same payment an
   const responses = await Promise.all(Array.from({ length: 24 }, (_, i) => h.send(i % 2 ? processing : success)));
   assert.ok(responses.every(response => response.status === 200));
   assert.equal(h.payment().status, "PAID");
-  assert.equal(h.state.audits.length, 2);
+  assert.equal(h.state.audits.filter(a=>a.actorType==="STRIPE_WEBHOOK").length, 2);
   assert.equal(h.calls.paymentWrites, 1); assert.equal(h.calls.receiptCreates, 1);
   assert.equal(h.calls.locks, 24);
 });
@@ -438,8 +478,8 @@ for (const type of ["checkout.session.completed", "payment_intent.succeeded"]) {
     evt.data.object.metadata = {};
     if (!type.startsWith("checkout")) evt.data.object.latest_charge = null;
     if (type.startsWith("checkout")) evt.data.object.payment_intent = null;
-    const before = clone(h.state); await accepted(h, evt);
-    assert.deepEqual(h.state, before); assert.equal(h.calls.stripeReads, 0);
+    const before = financialState(h.state); await rejected(h, evt);
+    assert.deepEqual(financialState(h.state), before); assert.equal(h.calls.stripeReads, 0);
   });
 }
 
@@ -449,7 +489,7 @@ test("first PaymentIntent binding requires its independently stored Stripe Check
   assert.equal(h.payment().stripePaymentIntentId, "pi_test");
   const wrong = harness(); wrong.payment().stripePaymentIntentId = null; wrong.payment().stripeChargeId = null;
   const evt = wrong.event("payment_intent.processing"); evt.data.object.id = "pi_unrelated";
-  const before = clone(wrong.state); await accepted(wrong, evt); assert.deepEqual(wrong.state, before);
+  const before = financialState(wrong.state); await rejected(wrong, evt); assert.deepEqual(financialState(wrong.state), before);
 });
 
 for (const attack of ["metadataBusiness","metadataPayment","metadataCheckout","metadataAccount","destination","storedIntent","storedBusiness","checkoutBusiness","checkoutPayment","liveAmount","eventCheckout","eventCharge","method","connectedAccount"]) {
@@ -478,45 +518,45 @@ for (const attack of ["metadataBusiness","metadataPayment","metadataCheckout","m
       });
       evt.data.object.latest_charge = "ch_other";
     }
-    const before = clone(h.state); await accepted(h, evt);
-    assert.deepEqual(h.state, before); assert.equal(h.calls.receiptCreates, 0);
+    const before = financialState(h.state); await rejected(h, evt);
+    assert.deepEqual(financialState(h.state), before); assert.equal(h.calls.receiptCreates, 0);
   });
 }
 
 test("a dispute for a stale charge cannot change the current settled payment", async () => {
   const h = harness(); h.settle(); await accepted(h, h.event("payment_intent.succeeded"));
   h.dispute(); const evt = h.event("charge.dispute.created"); evt.data.object.charge = "ch_old";
-  const before = clone(h.state); await accepted(h, evt); assert.deepEqual(h.state, before);
+  const before = financialState(h.state); await rejected(h, evt); assert.deepEqual(financialState(h.state), before);
 });
 
 test("missing persisted checkout linkage asks Stripe to retry rather than claiming metadata is ownership", async () => {
   const h = harness(); h.payment().stripeCheckoutSessionId = null;
   const evt = h.event("payment_intent.processing");
-  const before = clone(h.state); assert.equal((await h.send(evt)).status, 500);
-  assert.deepEqual(h.state, before);
+  const before = financialState(h.state); assert.equal((await h.send(evt)).status, 500);
+  assert.deepEqual(financialState(h.state), before);
 });
 
 for (const fault of ["audit","checkout","cas","stripe"]) {
   test("transaction failure rolls back payment/receipt/ledger and replay succeeds: " + fault, async () => {
     const h = harness(); h.settle(); h.faults[fault] = true;
-    const evt = h.event("payment_intent.succeeded"), before = clone(h.state);
+    const evt = h.event("payment_intent.succeeded"), before = financialState(h.state);
     assert.equal((await h.send(evt)).status, 500);
-    assert.deepEqual(h.state, before);
+    assert.deepEqual(financialState(h.state), before);
     h.faults[fault] = false; await accepted(h, evt);
     assert.equal(h.payment().status, "PAID"); assert.equal(h.calls.receiptCreates, 1);
-    assert.equal(h.state.audits.length, 1);
+    assert.equal(h.state.audits.filter(a=>a.actorType==="STRIPE_WEBHOOK").length, 1);
   });
 }
 
 test("real Stripe SDK signature verification rejects unsigned, forged and altered payloads before DB access", async () => {
-  const h = harness(), evt = h.event("payment_intent.succeeded"), before = clone(h.state);
+  const h = harness(), evt = h.event("payment_intent.succeeded"), before = financialState(h.state);
   assert.equal((await h.send(evt, "")).status, 400);
   assert.equal((await h.send(evt, "t=1,v1=invalid")).status, 400);
   const payload = JSON.stringify(evt);
   const signature = sdk.webhooks.generateTestHeaderString({ payload, secret });
   evt.data.object.metadata.businessId = "tampered";
   assert.equal((await h.send(evt, signature)).status, 400);
-  assert.deepEqual(h.state, before); assert.equal(h.calls.reads, 0); assert.equal(h.calls.transactions, 0);
+  assert.deepEqual(financialState(h.state), before); assert.equal(h.calls.reads, 0); assert.equal(h.calls.transactions, 0); assert.equal(h.state.audits.length,0);
 });
 
 test("central transition authority blocks all earlier lifecycle regressions and requires settlement evidence", () => {
@@ -540,24 +580,24 @@ test("a paid Checkout event snapshot cannot declare a still-processing bank paym
   assert.equal(h.payment().status, "PENDING"); assert.equal(h.state.receipts.size, 0);
 });
 
-test("actual SMS dispatch claims once under concurrent workers and webhook/page replays never resend", async () => {
+test("historical receipts without consent never dispatch under concurrent workers or replays", async () => {
   const h = harness(); h.settle(); const evt = h.event("payment_intent.succeeded");
   await accepted(h, evt);
   const results = await Promise.all(Array.from({ length: 16 }, () => h.dispatch("receipt-test")));
-  assert.equal(results.filter(result => result.status === "SENT").length, 1);
-  assert.equal(results.filter(result => result.status === "SKIPPED").length, 15);
-  assert.equal(h.calls.smsSends, 1);
+  assert.equal(results.filter(result => result.status === "SENT").length, 0);
+  assert.equal(results.filter(result => result.status === "SKIPPED").length, 16);
+  assert.equal(h.calls.smsSends, 0);
   await accepted(h, evt); await accepted(h, h.event("checkout.session.completed"));
   await h.render(); await h.render();
   assert.equal((await h.dispatch("receipt-test")).status, "SKIPPED");
-  assert.equal(h.calls.smsSends, 1);
-  assert.equal(h.state.receipts.get("payment-test").status, "SENT");
+  assert.equal(h.calls.smsSends, 0);
+  assert.equal(h.state.receipts.get("payment-test").status, "FAILED");
 });
 
 test("a queued receipt is not sent once the stored payment has been returned", async () => {
   const h = harness(); h.settle(); await accepted(h, h.event("payment_intent.succeeded"));
   h.dispute("insufficient_funds", "lost"); await accepted(h, h.event("charge.dispute.created"));
-  assert.equal((await h.dispatch("receipt-test")).status, "FAILED");
+  assert.equal((await h.dispatch("receipt-test")).status, "SKIPPED");
   assert.equal(h.calls.smsSends, 0); assert.equal(h.payment().status, "RETURNED");
 });
 
@@ -574,30 +614,12 @@ test("another business's valid metadata cannot override the stored PaymentIntent
   });
   const evt = h.event("payment_intent.succeeded");
   Object.assign(evt.data.object.metadata, { paymentId: "other-payment", businessId: "other-business", checkoutSessionId: "other-checkout", accountCode: "OTHER" });
-  const before = clone(h.state); await accepted(h, evt); assert.deepEqual(h.state, before);
+  const before = financialState(h.state); await rejected(h, evt); assert.deepEqual(financialState(h.state), before);
 });
 
-test("a waiting success handler rereads PENDING only after the earlier transaction commits", async () => {
-  const h = harness();
-  let signalRead, releaseRead;
-  const firstRead = new Promise(resolve => { signalRead = resolve; });
-  const gate = new Promise(resolve => { releaseRead = resolve; });
-  let first = true;
-  h.hooks.intentRead = async () => {
-    if (!first) return;
-    first = false; signalRead(); await gate;
-  };
-  const processing = h.send(h.event("payment_intent.processing"));
-  await firstRead;
-  h.settle();
-  const success = h.send(h.event("payment_intent.succeeded"));
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(h.calls.locks, 2);
-  releaseRead();
-  assert.equal((await processing).status, 200); assert.equal((await success).status, 200);
-  assert.equal(h.payment().status, "PAID");
-  assert.ok(h.payment().pendingAt); assert.ok(h.payment().paidAt);
-  assert.equal(h.calls.paymentWrites, 2); assert.equal(h.calls.receiptCreates, 1);
+test("a stale provider observation retries without holding or regressing a payment lock", async () => {
+  const h=harness();let signalRead,releaseRead;const firstRead=new Promise(resolve=>{signalRead=resolve;}),gate=new Promise(resolve=>{releaseRead=resolve;});let first=true;
+  h.hooks.intentRead=async()=>{if(!first)return;first=false;signalRead();await gate;};const old=h.event("payment_intent.processing"),processing=h.send(old);await firstRead;assert.equal(h.calls.locks,0);h.settle();await accepted(h,h.event("payment_intent.succeeded"));releaseRead();assert.equal((await processing).status,500);assert.equal(h.payment().status,"PAID");assert.equal(h.calls.paymentWrites,1);await accepted(h,old);assert.equal(h.calls.receiptCreates,1);
 });
 
 test("signed but expired delivery signatures are rejected before any record access", async () => {
@@ -609,18 +631,18 @@ test("signed but expired delivery signatures are rejected before any record acce
   assert.equal(h.calls.reads, 0); assert.equal(h.calls.transactions, 0);
 });
 
-test("refund notifications remain intentionally outside the current status model", async () => {
+test("unsupported refund notifications remain durably quarantined", async () => {
   const h = harness(); h.settle(); await accepted(h, h.event("payment_intent.succeeded"));
-  const before = clone(h.state), calls = { ...h.calls };
-  await accepted(h, h.event("charge.refunded"));
-  assert.deepEqual(h.state, before);
+  const before = financialState(h.state), calls = { ...h.calls };
+  await rejected(h, h.event("refund.unsupported"));
+  assert.deepEqual(financialState(h.state), before);
   assert.equal(h.calls.stripeReads, calls.stripeReads);
   assert.equal(h.calls.transactions, calls.transactions);
 });
 
 test("a partially received intent cannot claim PAID for the full RFL customer total", async () => {
   const h = harness("CARD"); h.settle(); h.live.intent.amount_received--;
-  const evt = h.event("payment_intent.succeeded"), before = clone(h.state);
-  await accepted(h, evt); assert.deepEqual(h.state, before);
+  const evt = h.event("payment_intent.succeeded"), before = financialState(h.state);
+  await rejected(h, evt); assert.deepEqual(financialState(h.state), before);
   assert.equal(h.state.receipts.size, 0);
 });

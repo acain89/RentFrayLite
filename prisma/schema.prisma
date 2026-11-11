@@ -50,8 +50,14 @@ enum PaymentMethod {
   CARD
 }
 
+enum StripeChargeModel {
+  LEGACY_DESTINATION
+  DIRECT
+}
+
 enum PaymentSourceType {
   RECURRING_PLAN
+  CUSTOM_PAYMENT
 }
 
 enum SessionType {
@@ -93,9 +99,19 @@ model Business {
   setupStep           SetupStep      @default(VERIFY_EMAIL)
   setupCompletedAt    DateTime?
 
+  // Dormant calendar foundation. Null preserves unknown historical configuration.
+  // Validate named IANA zones with validatePropertyTimeZone before future writes.
+  propertyTimeZone         String?
+  // Property-local date, not an instant; Prisma represents SQL DATE at UTC midnight.
+  firstStandardBillingDate DateTime? @db.Date
+
   ownerName    String
   contactEmail String
   contactPhone String?
+  paymentSmsEnabled Boolean? @default(true)
+  smsConsentAt DateTime?
+  smsConsentVersion String?
+  smsConsentPhone String?
 
   addressLine1 String?
   addressLine2 String?
@@ -116,6 +132,8 @@ model Business {
   verificationTokens VerificationToken[]
   sessions           Session[]
 
+  instantPayoutRequests InstantPayoutRequest[]
+
   @@index([status])
   @@index([contactEmail])
   @@index([isActive])
@@ -134,6 +152,7 @@ model Manager {
 
   business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   sessions Session[]
+  instantPayoutRequests InstantPayoutRequest[]
 
   @@index([email])
   @@index([isActive])
@@ -159,18 +178,34 @@ model StripeConnection {
   @@index([onboardingComplete])
 }
 
+// Durable external-operation journal; retained even if an uncharged business is deleted.
+model StripeAccountProvisioning {
+  id                      String @id @default(cuid())
+  businessId              String @unique
+  chargeModel             StripeChargeModel
+  stripePlatformAccountId String
+  stripeMode              String
+  parameters              Json
+  stripeAccountId         String? @unique
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
 model CheckoutSession {
   id String @id @default(cuid())
 
   businessId  String
   accountCode String
-  planId      String
+  sourceType  PaymentSourceType @default(RECURRING_PLAN)
+  planId      String?
 
-  billingCycle String
+  billingCycle String?
   unitNumber   String
   firstName    String
   lastName     String
   phone        String
+  smsConsentAt DateTime?
+  smsConsentVersion String?
 
   paymentMethod PaymentMethod
 
@@ -182,10 +217,22 @@ model CheckoutSession {
   platformFeeCents      Int
   totalCents            Int
 
+  // subtotalCents is management owed; platformFeeCents is the tenant fee.
+  // Nullable for historical records: never infer account/version from current configuration.
+  pricingVersion                    String?
+  chargeModel                       StripeChargeModel?
+  stripeConnectedAccountId          String?
+  // Unknown historical platform/environment facts remain NULL.
+  stripePlatformAccountId           String?
+  stripeMode                        String?
+  expectedStripeProcessingFeeCents   Int?
+  rflApplicationFeeCents             Int?
+  expectedManagementNetCents         Int?
+
   lineItems        Json
 
-  dueDate     DateTime
-  graceEndsAt DateTime
+  dueDate     DateTime?
+  graceEndsAt DateTime?
 
   status CheckoutSessionStatus @default(CREATED)
 
@@ -252,6 +299,8 @@ model RecurringCharge {
 
 model Payment {
   id         String            @id @default(cuid())
+  // New attempts only. Historical identity is never inferred from payer/unit/month.
+  checkoutAttemptId String?     @unique
   businessId String
   sourceType PaymentSourceType
   sourceId   String?
@@ -272,6 +321,18 @@ model Payment {
   processorFeeCents     Int?
   totalChargedCents     Int
   businessProceedsCents Int?
+
+  // businessProceedsCents remains expected management net, not observed net.
+  // processorFeeCents is reserved for observed Stripe processing costs.
+  pricingVersion                    String?
+  chargeModel                       StripeChargeModel?
+  stripeConnectedAccountId          String?
+  stripePlatformAccountId           String?
+  stripeMode                        String?
+  expectedStripeProcessingFeeCents   Int?
+  rflApplicationFeeCents             Int?
+  stripeBalanceTransactionId        String?
+  actualManagementNetCents           Int?
 
   billingCycle String?
 
@@ -295,12 +356,38 @@ model Payment {
 
   business       Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
   smsReceipt     SmsReceipt?
+  smsNotifications SmsNotification[]
+  financialReconciliation DirectFinancialReconciliation?
+  customerRefunds CustomerRefundObservation[]
 
   @@index([businessId, createdAt])
   @@index([businessId, status])
   @@index([businessId, billingCycle])
   @@index([businessId, sourceType, sourceId])
   @@index([status, createdAt])
+}
+
+// Provider observations only: no refund initiation, principal allocation or backfill.
+model CustomerRefundObservation {
+  id String @id @default(cuid())
+  paymentId String
+  stripeRefundId String
+  stripePlatformAccountId String
+  stripeAccountId String
+  stripeMode String
+  chargeModel StripeChargeModel?
+  pricingVersion String?
+  stripeChargeId String
+  stripePaymentIntentId String
+  amountCents Int
+  currency String
+  status String
+  stripeCreatedAt DateTime
+  observedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  @@unique([stripePlatformAccountId, stripeAccountId, stripeMode, stripeRefundId], map: "CustomerRefund_scope_identity_key")
+  @@index([paymentId, status])
 }
 
 model SmsReceipt {
@@ -319,11 +406,22 @@ model SmsReceipt {
   @@index([status])
 }
 
+// Short-lived public API counters, independent of tenant and financial records.
+model PublicRequestBudget {
+  key       String   @id
+  count     Int
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
 model VerificationToken {
   id         String                @id @default(cuid())
   businessId String
   type       VerificationTokenType
   tokenHash  String                @unique
+  // PASSWORD_RESET only; NULL historical tokens never authorize recovery.
+  credentialFingerprint String?
   expiresAt  DateTime
   usedAt     DateTime?
   createdAt  DateTime              @default(now())
@@ -353,6 +451,7 @@ model AuditLog {
   @@index([actorType, actorId])
   @@index([targetType, targetId])
   @@index([action, createdAt])
+  @@index([action, targetId, createdAt])
 }
 
 model Session {
@@ -378,4 +477,107 @@ model Session {
   @@index([adminAccessId])
   @@index([type, expiresAt])
   @@index([expiresAt])
+}
+
+// One durable operation per direct payment; no legacy backfill or financial repricing.
+enum DirectReconciliationStatus {
+  WAITING_DATA
+  REQUIRED
+  CORRECTED
+  RECONCILED
+  EXCEPTION
+}
+
+model DirectFinancialReconciliation {
+  id String @id @default(cuid())
+  paymentId String @unique
+  status DirectReconciliationStatus @default(WAITING_DATA)
+  reasonCode String?
+  refreshRequested Boolean @default(false)
+  expectedSnapshot Json
+  initialObservation Json?
+  latestObservation Json?
+  applicationFeeId String? @unique
+  actualProcessorFeeCents Int?
+  observedManagementNetCents Int?
+  correctionCents Int @default(0)
+  confirmedCorrectionCents Int @default(0)
+  unresolvedShortfallCents Int?
+  idempotencyKey String? @unique
+  reservedAt DateTime?
+  stripeRefundId String? @unique
+  leaseToken String?
+  leaseUntil DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  @@index([status, updatedAt])
+}
+
+// Transition outbox. Historical SmsReceipt rows remain intact and are not consent evidence.
+model SmsNotification {
+  id String @id @default(cuid())
+  paymentId String
+  transitionKey String
+  recipientType String
+  eventType String
+  paymentState String
+  phone String
+  phoneHash String
+  body String
+  consentVersion String?
+  consentAt DateTime?
+  status String @default("QUEUED")
+  reasonCode String?
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  claimedAt DateTime?
+  providerMessageId String? @unique
+  callbackToken String @unique
+  sentAt DateTime?
+  deliveredAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  @@unique([paymentId, recipientType, transitionKey])
+  @@index([status, nextAttemptAt])
+  @@index([phoneHash, status])
+}
+
+// Sparse, program-wide opt-out suppression; never a tenant profile.
+model SmsSuppression {
+  phoneHash String @id
+  reasonCode String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Dormant payout journal, separate from immutable tenant payments. No backfill.
+model InstantPayoutRequest {
+  id String @id
+  businessId String
+  managerId String
+  authorizationSessionId String
+  platformAccountId String
+  connectedAccountId String
+  stripeMode String
+  destinationId String
+  currency String @default("usd")
+  pricingVersion String
+  selectedAmountCents Int
+  rflFeeCents Int
+  expectedReceivedCents Int
+  eligibleFundsCents Int
+  evidenceReference String
+  evidenceObservedAt DateTime
+  idempotencyKey String @unique
+  stripePayoutId String? @unique
+  status String @default("RESERVED")
+  errorCode String?
+  lastObservedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  manager Manager @relation(fields: [managerId], references: [id], onDelete: Restrict)
+  @@index([businessId, createdAt])
 }

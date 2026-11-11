@@ -1,10 +1,13 @@
 "use client";
+import Link from "next/link";
 
 import {
   FormEvent,
   useMemo,
   useState,
 } from "react";
+
+import { TENANT_SMS_DISCLOSURE } from "@/lib/smsConsent";
 
 type CheckoutCharge = {
   id: string;
@@ -95,6 +98,7 @@ export default function RecurringCheckoutClient({
       plans.length === 1 ? plans[0].id : ""
     );
 
+  const [smsConsent, setSmsConsent] = useState(false);
   const [formValues, setFormValues] =
     useState<CheckoutFormValues>(
       INITIAL_FORM_VALUES
@@ -105,6 +109,8 @@ export default function RecurringCheckoutClient({
 
   const [errorMessage, setErrorMessage] =
     useState("");
+  const [customAmount, setCustomAmount] = useState("");
+  const isCustom = selectedPlanId === "__custom__";
 
   const selectedPlan = useMemo(
     () =>
@@ -124,6 +130,7 @@ export default function RecurringCheckoutClient({
 
   const isFormValid =
     Boolean(selectedPlanId) &&
+    (!isCustom || Boolean(customAmount)) &&
     Boolean(formValues.unitNumber.trim()) &&
     Boolean(formValues.firstName.trim()) &&
     Boolean(formValues.lastName.trim()) &&
@@ -217,11 +224,12 @@ export default function RecurringCheckoutClient({
           },
           body: JSON.stringify({
             accountCode,
-            planId: selectedPlanId,
+            ...(isCustom ? { sourceType: "CUSTOM_PAYMENT", amount: customAmount } : { planId: selectedPlanId }),
             unitNumber,
             firstName,
             lastName,
             phone: phoneDigits,
+            smsConsent,
             paymentMethod:
               formValues.paymentMethod,
           }),
@@ -260,33 +268,6 @@ export default function RecurringCheckoutClient({
     }
   }
 
-  if (plans.length === 0) {
-    return (
-      <div className="rfl-public-checkout">
-        <header className="rfl-public-checkout-header">
-          <p className="rfl-eyebrow">
-            Customer checkout
-          </p>
-
-          <h1>{businessName}</h1>
-
-          <p>
-            Account code:{" "}
-            <strong>{accountCode}</strong>
-          </p>
-        </header>
-
-        <section className="rfl-public-checkout-section">
-          <h2>Payments unavailable</h2>
-
-          <p>
-            This business has not configured
-            any payment options yet.
-          </p>
-        </section>
-      </div>
-    );
-  }
 
   return (
     <div className="rfl-public-checkout">
@@ -352,10 +333,15 @@ export default function RecurringCheckoutClient({
               </button>
             );
           })}
+          <button type="button" className={`rfl-checkout-plan-card${isCustom ? " is-selected" : ""}`}
+            aria-pressed={isCustom} onClick={() => handlePlanSelection("__custom__")}>
+            <span className="rfl-checkout-plan-name">Custom Payment</span>
+            <span className="rfl-checkout-plan-due">Enter your own payment amount</span>
+          </button>
         </div>
       </section>
 
-      {selectedPlan ? (
+      {selectedPlan || isCustom ? (
         <section className="rfl-public-checkout-section">
           <h2>Customer information</h2>
 
@@ -363,6 +349,13 @@ export default function RecurringCheckoutClient({
             className="rfl-checkout-form"
             onSubmit={handleReviewPayment}
           >
+            {isCustom ? <div className="rfl-checkout-field">
+              <label htmlFor="customAmount">Custom Payment amount ($)</label>
+              <input id="customAmount" name="customAmount" type="text" inputMode="decimal" autoComplete="off"
+                placeholder="0.00" value={customAmount} maxLength={7} required
+                onChange={event => { setCustomAmount(event.target.value); setErrorMessage(""); }} />
+              <p>Enter $1.00 to $5,000.00. The processing fee is shown at review.</p>
+            </div> : null}
             <div className="rfl-checkout-field">
               <label htmlFor="referenceLabel">
                 Unit / space number
@@ -459,7 +452,10 @@ export default function RecurringCheckoutClient({
               />
             </div>
 
-            <fieldset className="rfl-checkout-payment-method">
+            <label><input type="checkbox" checked={smsConsent} onChange={e => setSmsConsent(e.target.checked)} /> {TENANT_SMS_DISCLOSURE}</label>
+            <p><Link href="/privacy">Privacy Policy</Link> and <Link href="/terms">Terms</Link></p>
+
+            {!isCustom ? <fieldset className="rfl-checkout-payment-method">
               <legend>
                 Payment method
               </legend>
@@ -505,7 +501,7 @@ export default function RecurringCheckoutClient({
                   Credit or debit card
                 </span>
               </label>
-            </fieldset>
+            </fieldset> : null}
 
             {errorMessage ? (
               <div
