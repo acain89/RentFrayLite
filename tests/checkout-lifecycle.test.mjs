@@ -59,7 +59,7 @@ for (const backend of backends) for (const method of ["ACH", "CARD"]) {
       assert.equal(h.calls.creates.length, 1); assert.equal(h.live.sessions.size, 1);
       assert.equal((await h.payments()).length, 1);
       if (status === "PAID") assert.ok(confirmed.payment.paidAt);
-      if (failure) assert.ok(h.calls.errors.some(args => args[0] === "Unable to create Stripe Checkout Session:"));
+      if (failure) assert.ok(h.calls.errors.some(args => args[0] === "RFL_OPERATION_FAILED" && args[1].operation === "checkout_create_failed"));
     });
   }
 
@@ -69,7 +69,9 @@ for (const backend of backends) for (const method of ["ACH", "CARD"]) {
     const state = await records(h, checkout); assert.equal(state.payment.status, "FAILED"); assert.ok(state.payment.failedAt);
     assert.match(state.payment.failureMessage, /Stripe create/);
     assert.equal(state.checkout.status, "REVIEWED"); assert.equal(state.payment.stripeCheckoutSessionId, null);
-    assert.equal((await h.start(await h.prepare())).status, 409); assert.equal(h.calls.creates.length, 1);
+    assert.equal((await h.start(checkout)).status, 409); assert.equal(h.calls.creates.length, 1);
+    h.live.createFailure = false;
+    assert.equal((await h.start(await h.prepare())).status, 200); assert.equal(h.calls.creates.length, 2);
   });
   test(`${label}: a missing URL cannot hide already-committed PAID or regress ownership`, async () => {
     const h = await harness(method, backend); const checkout = await h.prepare(); let confirmed;
@@ -178,7 +180,14 @@ for (const backend of backends) for (const method of ["ACH", "CARD"]) {
     h.settle(a, intent); let entered, release;
     const acquired = new Promise(resolve => { entered = resolve; });
     const barrier = new Promise(resolve => { release = resolve; });
-    h.live.onIntentRead = async () => { entered(); await barrier; };
+    // Hold the actual write lock, not a Stripe network read.
+    h.mocks["@/lib/prisma"] = { prisma: new Proxy(h.db, { get(target,key) {
+      if (key === "$transaction") return (fn,options) => target.$transaction(tx => fn(new Proxy(tx,{get(t,method) {
+        if (method === "$queryRaw") return async query => { const result=await t.$queryRaw(query); if (/FROM "Payment".*FOR UPDATE/.test(query.sql)) { entered(); await barrier; } return result; };
+        return typeof t[method] === "function" ? t[method].bind(t) : t[method];
+      }})),options);
+      return typeof target[key] === "function" ? target[key].bind(target) : target[key];
+    }}) };
     const webhook = h.webhook(a, intent); await acquired;
     const writer = persist(h, a.payment, a.checkout, kind === "started"
       ? { kind, stripeCheckoutId: a.session.id } : { kind, message: "Late network failure" });
@@ -186,7 +195,7 @@ for (const backend of backends) for (const method of ["ACH", "CARD"]) {
       let waiting = false;
       for (let n = 0; n < 100 && !waiting; n++) {
         const [row] = await postgres.$queryRawUnsafe(`SELECT count(*)::int AS count FROM pg_stat_activity
-          WHERE usename = 'rfl_b1' AND wait_event_type = 'Lock' AND query LIKE '%FROM "Payment" WHERE "id"%FOR UPDATE%'`);
+          WHERE usename = current_user AND wait_event_type = 'Lock' AND query LIKE '%FROM "Payment" WHERE "id"%FOR UPDATE%'`);
         waiting = row.count > 0;
         if (!waiting) await new Promise(resolve => setTimeout(resolve, 10));
       }

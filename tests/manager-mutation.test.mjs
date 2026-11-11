@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import { authHarness, postgres } from './helpers/auth-harness.mjs';
+import { bodylessDelete, pauseJsonRoute, assertLockWaiter, assertPendingMutation } from './helpers/manager-mutation-fixtures.mjs';
 
 const pgTest = (name, fn) => test('PostgreSQL mutation authority: ' + name, { skip: !postgres }, fn);
+const bodyPauses = new Set();
+afterEach(() => { for (const pause of bodyPauses) pause.dispose(); bodyPauses.clear(); });
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
-const billing = id => ({ sameRulesForAll: true, rules: [{ recurringPlanId: id, dueDay: 2, gracePeriodDays: 1, initialLateFeeCents: 100, dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0 }], advance: true });
+const billing = id => ({ sameRulesForAll: true, confirmCalendarChange: true, rules: [{ recurringPlanId: id, dueDay: 1, gracePeriodDays: 5, initialLateFeeCents: 100, dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0 }], advance: true });
 const charges = id => ({ tiers: [{ recurringPlanId: id, charges: [{ id: null, clientKey: 'new', sharedChargeGroupId: null, label: 'New charge', amountCents: 100, applyToAllTiers: false }] }], advance: true });
 
 async function fixture() {
@@ -12,7 +15,7 @@ async function fixture() {
   const wrapTx = tx => new Proxy(tx, { get(target, key) {
     if (typeof target[key] !== 'object' || !target[key]) return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
     return new Proxy(target[key], { get(model, method) { return async (...args) => {
-      await hooks.before?.(String(key), String(method), args);
+      await hooks.before?.(String(key), String(method), args, tx);
       const value = await model[method](...args);
       await hooks.after?.(String(key), String(method), args, value);
       return value;
@@ -24,7 +27,8 @@ async function fixture() {
   } });
   const account = id => ({ id, country: 'US', details_submitted: true, charges_enabled: true, payouts_enabled: true, capabilities: { transfers: 'active' }, requirements: {} });
   const providerCalls = { accounts: 0, links: 0 };
-  const stripe = { accounts: { create: async () => { providerCalls.accounts++; return { id: 'acct_mutation_' + crypto.randomUUID().replaceAll('-', '') }; }, retrieve: async id => account(typeof id === 'string' ? id : 'acct_platform') },
+  const stripe = { accounts: { create: async params => { providerCalls.accounts++; return { id: 'acct_mutation' + crypto.randomUUID().replaceAll('-', ''), metadata:params.metadata }; }, retrieve: async id => account(typeof id === 'string' ? id : 'acct_platform') },
+    balance: { retrieve: async () => ({ livemode: true }) },
     accountLinks: { create: async () => { providerCalls.links++; return { url: 'https://example.test/onboarding' }; } },
     paymentMethodConfigurations: { list: async () => ({ has_more: false, data: [{ active: true, application: null, is_default: true, livemode: true, card: { available: true }, us_bank_account: { available: true } }] }) } };
   const h = await authHarness('postgres', db, { '@/lib/stripe': { getStripeClient: () => stripe } }, { NODE_ENV: 'production', STRIPE_SECRET_KEY: 'sk_live_mutation_fixture_no_network' });
@@ -38,9 +42,11 @@ async function fixture() {
   });
   const save = request => h.load('app/api/setup/recurring/charges/route.ts').PUT(request ?? h.request(charges(plan.id)));
   const pauseBody = (route, method, body) => {
-    const entered = deferred(), release = deferred();
-    const result = h.load(route)[method]({ url: 'https://example.test/api', json: async () => { entered.resolve(); await release.promise; return body; } });
-    return { entered: entered.promise, release: release.resolve, result };
+    const pause = pauseJsonRoute(request => h.load(route)[method](request), method, async () => {
+      const expectedVersion = Array.isArray(body.tiers)||Array.isArray(body.rules) ? h.load('lib/recurringConfiguration.ts').configurationFingerprint(await postgres.recurringPlan.findMany({where:{businessId:h.businesses[0].id,isActive:true},include:{charges:true}})) : undefined;
+      return {...body,...(expectedVersion?{expectedVersion}:{})};
+    });
+    bodyPauses.add(pause); return pause;
   };
   const reset = async () => { h.use(admin); const r = await h.reset(); assert.equal(r.status, 200); return r; };
   // A retained CheckoutSession selects real B6 deactivation instead of deletion.
@@ -48,15 +54,15 @@ async function fixture() {
     unitNumber: '101', firstName: 'Test', lastName: 'Payer', phone: '5555551234', paymentMethod: 'ACH', billingCycle: '2026-10',
     baseAmountCents: 100000, recurringChargesCents: 0, initialLateFeeCents: 0, dailyLateFeesCents: 0, subtotalCents: 100000, platformFeeCents: 995, totalCents: 100995, dueDate: new Date(), graceEndsAt: new Date(),
     lineItems: [], expiresAt: new Date(Date.now() + 60000) } });
-  const deactivate = async () => { h.use(admin); const r = await h.load('app/api/admin/businesses/[businessId]/route.ts').DELETE(h.request({}), { params: Promise.resolve({ businessId: h.businesses[0].id }) }); assert.equal(r.status, 200); assert.equal((await r.json()).action, 'deactivated'); };
+  const deactivate = async () => { h.use(admin); const r = await h.load('app/api/admin/businesses/[businessId]/route.ts').DELETE(bodylessDelete(), { params: Promise.resolve({ businessId: h.businesses[0].id }) }); assert.equal(r.status, 200); assert.equal((await r.json()).action, 'deactivated'); };
   return { h, hooks, stripe, providerCalls, plan, manager, second, other, admin, snapshot, save, pauseBody, reset, retain, deactivate };
 }
 const chargeRoute = 'app/api/setup/recurring/charges/route.ts';
-async function waitBlocked(pattern) {
+async function waitBlocked(pattern, blockingPid) {
   const until = Date.now() + 10000;
   while (Date.now() < until) {
-    const rows = await postgres.$queryRawUnsafe("SELECT query FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'");
-    if (rows.some(row => pattern.test(row.query))) return;
+    const rows = await postgres.$queryRawUnsafe("SELECT pid,query,pg_blocking_pids(pid) AS blockers FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'");
+    if (rows.some(row => pattern.test(row.query) && (blockingPid === undefined || row.blockers.includes(blockingPid)))) return assertLockWaiter(rows, pattern, blockingPid);
     await new Promise(r => setTimeout(r, 10));
   }
   throw Error('Expected PostgreSQL lock waiter did not appear');
@@ -106,10 +112,18 @@ for (const operation of ['reset', 'deactivation']) {
   pgTest('save holds authority first; ' + operation + ' waits until commit', async () => {
     const f = await fixture(); if (operation === 'deactivation') await f.retain();
     const entered = deferred(), release = deferred();
-    f.hooks.before = async (model, method) => { if (model === 'recurringCharge' && method === 'deleteMany') { entered.resolve(); await release.promise; } };
+    let blockingPid, settled = false;
+    const before = await postgres.recurringCharge.findMany({ where: { recurringPlanId: f.plan.id } });
+    const auditBefore = await postgres.auditLog.count({ where: { businessId: f.h.businesses[0].id } });
+    f.hooks.before = async (model, method, args, tx) => { if (model === 'recurringCharge' && method === 'deleteMany') { blockingPid = (await tx.$queryRawUnsafe('SELECT pg_backend_pid() AS pid'))[0].pid; entered.resolve(); await release.promise; } };
     const save = f.save(); await entered.promise;
     const revoke = operation === 'reset' ? f.reset() : f.deactivate();
-    try { await waitBlocked(operation === 'reset' ? /UPDATE.*Manager/s : /Business.*FOR NO KEY UPDATE/s); } finally { release.resolve(); }
+    revoke.then(() => { settled = true; }, () => { settled = true; });
+    try {
+      await waitBlocked(/Business.*FOR NO KEY UPDATE/s, blockingPid);
+      assertPendingMutation({ settled, before, current: await postgres.recurringCharge.findMany({ where: { recurringPlanId: f.plan.id } }),
+        auditBefore, auditCurrent: await postgres.auditLog.count({ where: { businessId: f.h.businesses[0].id } }) });
+    } finally { release.resolve(); }
     assert.equal((await save).status, 200); await revoke;
     assert.equal((await f.snapshot()).plans[0].charges[0].label, 'New charge');
     assert.equal(await postgres.session.count({ where: { managerId: f.h.managers[0].id } }), 0);
@@ -153,7 +167,7 @@ for (const name of ['review', 'connect', 'onboard', 'sync']) pgTest(name + ' rec
   // Fresh route loader uses the same real persisted sessions and cookies.
   const g = await authHarness('postgres', db, { '@/lib/stripe': { getStripeClient: () => f.stripe } }, { NODE_ENV: 'production', STRIPE_SECRET_KEY: 'sk_live_mutation_fixture_no_network' }); g.use(f.manager);
   let action;
-  if (name === 'review') action = g.load('app/api/setup/recurring/review/route.ts').POST();
+  if (name === 'review') action = g.load('app/api/setup/recurring/review/route.ts').POST(new Request('https://example.test/api',{method:'POST',headers:{origin:'https://example.test'}}));
   if (name === 'onboard') action = g.load('app/api/stripe/onboard/route.ts').GET({ url: 'https://example.test/api' });
   if (name === 'sync') {
     f.stripe.accounts.retrieve = async id => { entered.resolve(); await release.promise; return { id, country: 'US', details_submitted: true, payouts_enabled: true, charges_enabled: true, capabilities: { transfers: 'active' }, requirements: {} }; };
@@ -162,12 +176,22 @@ for (const name of ['review', 'connect', 'onboard', 'sync']) pgTest(name + ' rec
     action = assert.rejects(action, /Authentication required/);
   }
   if (name === 'connect') {
-    // Hold the Business lock externally so the actual guard must wait; reset's
-    // audit KEY SHARE can still commit, proving the selected lock compatibility.
+    // Reset now owns Business before waiting on Manager. Hold Manager first,
+    // observe that exact reset backend, then prove Connect waits behind it.
+    // Holding Business while awaiting reset would deadlock the fixture itself.
     const held = deferred(), unlock = deferred();
-    const lock = postgres.$transaction(async tx => { await tx.$queryRawUnsafe('SELECT "id" FROM "Business" WHERE "id"=$1 FOR NO KEY UPDATE', identity.businessId); held.resolve(); await unlock.promise; }, { timeout: 15000 });
-    await held.promise; action = g.load('app/api/stripe/connect/route.ts').POST({ url: 'https://example.test/api' });
-    try { await waitBlocked(/Business.*FOR NO KEY UPDATE/s); await f.reset(); } finally { unlock.resolve(); } await lock;
+    let holderPid;
+    const lock = postgres.$transaction(async tx => { await tx.$queryRawUnsafe('SELECT "id" FROM "Manager" WHERE "id"=$1 FOR UPDATE', f.h.managers[0].id); holderPid = (await tx.$queryRawUnsafe('SELECT pg_backend_pid() AS pid'))[0].pid; held.resolve(); await unlock.promise; }, { timeout: 15000 });
+    await held.promise; const reset = f.reset();
+    reset.catch(() => {}); // Observe immediately; the original rejection is awaited below.
+    try {
+      const resetWaiter = await waitBlocked(/Manager.*FOR NO KEY UPDATE/s, holderPid);
+      action = g.load('app/api/stripe/connect/route.ts').POST(new Request('https://example.test/api',{method:'POST',headers:{origin:'https://example.test'}}));
+      await waitBlocked(/Business.*FOR NO KEY UPDATE/s, resetWaiter.pid);
+      assert.deepEqual(f.providerCalls, { accounts: 0, links: 0 });
+      assert.equal(await postgres.stripeConnection.count({ where: { businessId: identity.businessId } }), 0);
+    } finally { unlock.resolve(); }
+    await lock; await reset;
     assert.equal((await action).status, 401); assert.equal(await postgres.stripeConnection.count({ where: { businessId: identity.businessId } }), 0); assert.deepEqual(f.providerCalls, { accounts: 0, links: 0 }); return;
   }
   await entered.promise; await f.reset(); const before = await f.snapshot(); release.resolve();
@@ -206,18 +230,18 @@ for (const action of ['PASSWORD', 'EMAIL']) pgTest('security ' + action + ' cann
   assert.equal(await postgres.auditLog.count({ where: { businessId: f.h.businesses[0].id } }), 0);
 });
 pgTest('active Connect creation and onboarding keep local connection and audit', async () => {
-  const f = await fixture(); const response = await f.h.load('app/api/stripe/connect/route.ts').POST({ url: 'https://example.test/api' });
+  const f = await fixture(); const response = await f.h.load('app/api/stripe/connect/route.ts').POST(new Request('https://example.test/api',{method:'POST',headers:{origin:'https://example.test'}}));
   assert.equal(response.status, 200); assert.equal((await response.json()).redirectTo, 'https://example.test/onboarding');
   assert.equal(await postgres.stripeConnection.count({ where: { businessId: f.h.businesses[0].id } }), 1);
   assert.equal(await postgres.auditLog.count({ where: { businessId: f.h.businesses[0].id, action: 'STRIPE_ACCOUNT_CREATED' } }), 1);
 });
 
-pgTest('reset queued on Manager first beats a mutation holding Business without lock inversion', async () => {
+pgTest('admin reset holding Business waits for Manager and serializes a later manager mutation', async () => {
   const f = await fixture(), held = deferred(), release = deferred();
   const holder = postgres.$transaction(async tx => { await tx.$queryRawUnsafe('SELECT "id" FROM "Manager" WHERE "id"=$1 FOR UPDATE', f.h.managers[0].id); held.resolve(); await release.promise; }, { timeout: 15000 });
-  await held.promise; const reset = f.reset(); await waitBlocked(/UPDATE.*Manager/s);
+  await held.promise; const reset = f.reset(); await waitBlocked(/Manager.*FOR NO KEY UPDATE/s);
   f.h.use(f.manager); const save = f.save();
-  try { await waitBlocked(/Manager.*FOR NO KEY UPDATE/s); } finally { release.resolve(); }
+  try { await waitBlocked(/Business.*FOR NO KEY UPDATE/s); } finally { release.resolve(); }
   await holder; await reset; assert.equal((await save).status, 401);
   assert.equal((await f.snapshot()).plans[0].charges[0].label, 'Original');
 });
@@ -226,11 +250,11 @@ pgTest('onboarding-link failure retains committed account and retry reuses it', 
   const f = await fixture(), original = f.stripe.accountLinks.create;
   f.stripe.accountLinks.create = async () => { throw Error('Injected link failure'); };
   const route = f.h.load('app/api/stripe/connect/route.ts');
-  assert.equal((await route.POST({ url: 'https://example.test/api' })).status, 500);
+  assert.equal((await route.POST(new Request('https://example.test/api',{method:'POST',headers:{origin:'https://example.test'}}))).status, 500);
   const before = await postgres.stripeConnection.findUnique({ where: { businessId: f.h.businesses[0].id } });
   assert.ok(before); assert.equal(f.providerCalls.accounts, 1);
   f.stripe.accountLinks.create = original;
-  assert.equal((await route.POST({ url: 'https://example.test/api' })).status, 200);
+  assert.equal((await route.POST(new Request('https://example.test/api',{method:'POST',headers:{origin:'https://example.test'}}))).status, 200);
   assert.equal((await postgres.stripeConnection.findUnique({ where: { businessId: before.businessId } })).stripeAccountId, before.stripeAccountId);
   assert.equal(f.providerCalls.accounts, 1);
   assert.equal(await postgres.auditLog.count({ where: { businessId: before.businessId, action: 'STRIPE_ACCOUNT_CREATED' } }), 1);

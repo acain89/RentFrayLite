@@ -5,6 +5,7 @@ import {
   isRecurringCheckoutBusiness,
 } from "@/lib/publicCheckout";
 import RecurringCheckoutClient from "./RecurringCheckoutClient";
+import { getConfigurationReasons } from "@/lib/paymentReadiness";
 
 type PublicPaymentPageProps = {
   params: Promise<{
@@ -17,7 +18,7 @@ export default async function PublicPaymentPage({
 }: PublicPaymentPageProps) {
   const { accountCode } = await params;
 
-  const business = await getPublicCheckoutBusiness(accountCode);
+  const business = await getPublicCheckoutBusiness(accountCode, "CUSTOM_PAYMENT");
 
   if (!business) {
     notFound();
@@ -41,30 +42,13 @@ export default async function PublicPaymentPage({
     );
   }
 
-  if (business.recurringPlans.length === 0) {
-    return (
-      <main className="rfl-placeholder-page">
-        <section className="rfl-placeholder-card">
-          <p className="rfl-eyebrow">Customer checkout</p>
-
-          <h1>{business.name}</h1>
-
-          <p>This business has not added any payment options yet.</p>
-
-          <Link href="/" className="rfl-secondary-button">
-            Return Home
-          </Link>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className="rfl-public-checkout-page">
       <RecurringCheckoutClient
         businessName={business.name}
         accountCode={business.accountCode ?? accountCode}
-        plans={business.recurringPlans.map((plan) => ({
+        plans={(getConfigurationReasons(business).length === 0 ? business.recurringPlans : []).map((plan) => ({
           id: plan.id,
           name: plan.name,
           baseAmountCents: plan.baseAmountCents,

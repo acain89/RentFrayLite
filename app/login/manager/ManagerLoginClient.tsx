@@ -10,7 +10,7 @@ type LoginResponse = {
   error?: string;
 };
 
-export default function ManagerLoginClient() {
+export default function ManagerLoginClient({ recoveryAvailable = false }: { recoveryAvailable?: boolean } = {}) {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -114,6 +114,9 @@ export default function ManagerLoginClient() {
             {submitting ? "Signing in..." : "Sign In"}
           </button>
         </form>
+
+        {recoveryAvailable ? <Link className="rfl-auth-secondary-link" href="/login/manager/forgot-password">Forgot password?</Link>
+          : <p>Self-service password recovery is currently unavailable. Contact your business administrator for assistance.</p>}
 
         <Link className="rfl-auth-secondary-link" href="/setup">
           Create a business account

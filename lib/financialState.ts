@@ -2,6 +2,7 @@ import {
   getBillingCalendar,
   type BillingCalendarState,
 } from "@/lib/billingCalendar";
+import { getPropertyBillingCalendar } from "@/lib/propertyBillingCalendar";
 
 export type FinancialStateRecurringCharge = {
   id: string;
@@ -59,6 +60,7 @@ export type FinancialState = {
 export type GetFinancialStateInput = {
   plan: FinancialStatePlan;
   now?: Date;
+  propertyTimeZone?: string;
 };
 
 function assertSafeNonNegativeCents(
@@ -112,6 +114,7 @@ function isRecurringChargeActive(
 export function getFinancialState({
   plan,
   now = new Date(),
+  propertyTimeZone,
 }: GetFinancialStateInput): FinancialState {
   assertSafeNonNegativeCents(
     plan.baseAmountCents,
@@ -135,7 +138,28 @@ export function getFinancialState({
     );
   }
 
-  const calendar = getBillingCalendar(
+  let calendar: BillingCalendarState;
+  if (propertyTimeZone !== undefined) {
+    if (plan.dueDay !== 1 || (plan.gracePeriodDays !== 3 && plan.gracePeriodDays !== 4 && plan.gracePeriodDays !== 5) ||
+        !Number.isSafeInteger(plan.dailyLateFeeMaxDays) || plan.dailyLateFeeMaxDays < 0 || plan.dailyLateFeeMaxDays > 365) {
+      throw new RangeError("Invalid property-local billing rules.");
+    }
+    const local = getPropertyBillingCalendar({ timeZone: propertyTimeZone, gracePeriodDays: plan.gracePeriodDays,
+      dailyLateFeesEnabled: plan.dailyLateFeeCents > 0, now });
+    // Existing snapshot Date fields carry date-only tokens at UTC midnight,
+    // not real UTC due instants. Review formats those tokens without shifting them.
+    const dateToken = (value: string) => new Date(`${value}T00:00:00.000Z`);
+    calendar = {
+      billingCycle: local.billingCycle, dueDay: 1, dueDate: dateToken(local.dueDate),
+      gracePeriodDays: plan.gracePeriodDays, graceEndsAt: dateToken(local.graceLastDate),
+      isBeforeDueDate: false, isDue: local.localDate === local.dueDate,
+      isWithinGracePeriod: local.isWithinGracePeriod, isPastGracePeriod: !local.isWithinGracePeriod,
+      daysLateAfterGrace: local.daysLateAfterGrace, initialLateFeeEligible: local.initialLateFeeEligible,
+      dailyLateFeeStartDate: dateToken(local.dailyLateFeeStartsOn),
+      dailyLateFeeDays: Math.min(local.dailyLateFeeDays, plan.dailyLateFeeMaxDays), evaluatedAt: dateToken(local.localDate),
+    };
+  } else {
+    calendar = getBillingCalendar(
     {
       dueDay: plan.dueDay,
       gracePeriodDays: plan.gracePeriodDays,
@@ -144,6 +168,7 @@ export function getFinancialState({
     },
     now
   );
+  }
 
   const billingCycle =
     calendar.billingCycle;

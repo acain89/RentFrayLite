@@ -1,3 +1,6 @@
+import { logOperationalError } from "@/lib/operationalLogging";
+import { publicJson, publicJsonFailure } from "@/lib/publicJson";
+import { requireCredentialOrigin } from "@/lib/credentialRequest";
 import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
 import {
   BusinessStatus,
@@ -49,6 +52,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  try { requireCredentialOrigin(request); } catch { return NextResponse.json({ error: "Invalid request origin." }, { status: 403 }); }
+
   const session = await getCurrentSession();
 
   if (
@@ -73,20 +78,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const current = await loadBusinessPaymentReadiness(session.business.id);
-  if (!current?.readiness.canChooseAccountCode) {
-    return NextResponse.json({ error: current?.readiness.reasons[0]?.message ?? "Complete payment setup before choosing an account code." }, { status: 409 });
-  }
-
   let body: unknown;
 
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid request body." },
-      { status: 400 }
-    );
+    body = await publicJson(request, 4096);
+  } catch (error) { return publicJsonFailure(error); }
+
+  const current = await loadBusinessPaymentReadiness(session.business.id);
+  if (!current?.readiness.canChooseAccountCode) {
+    return NextResponse.json({ error: current?.readiness.reasons[0]?.message ?? "Complete payment setup before choosing an account code." }, { status: 409 });
   }
 
   const parsed = accountCodeSchema.safeParse(body);
@@ -153,10 +153,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "The account code has already been locked. Refresh your account." }, { status: 409 });
     }
 
-    console.error(
-      "Unable to complete account setup:",
-      error
-    );
+    logOperationalError("setup_failed", error, businessId);
 
     return NextResponse.json(
       {

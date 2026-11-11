@@ -15,6 +15,7 @@ export default function PrivacyPage() {
           <h1>Privacy Policy</h1>
           <p>Effective date: July 26, 2026</p>
           <p>Version 1.0</p>
+          <p>Payment SMS disclosures updated: October 25, 2026</p>
         </header>
 
         <section>
@@ -121,6 +122,19 @@ export default function PrivacyPage() {
           <p>
             Mobile carriers and communications providers may process
             message metadata under their own policies.
+          </p>
+          <p>
+            SMS is optional and requires affirmative consent. We record the
+            consent version, timestamp, authorized number, and relevant transaction
+            or management preference. We retain delivery records and opt-out
+            suppression information to honor STOP requests and prevent duplicate
+            messages. Reply STOP to opt out or HELP for help.
+          </p>
+          <p>
+            Mobile numbers and SMS opt-in consent are not shared with third
+            parties or affiliates for marketing or promotional purposes.
+            Communications providers receive information needed to deliver
+            and secure the requested transactional messages.
           </p>
         </section>
 

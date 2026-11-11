@@ -6,7 +6,8 @@ export const ADMIN_LOGIN_WINDOW_MS = 5 * 60 * 1000;
 export const ADMIN_LOGIN_ATTEMPT_ACTION = "ADMIN_LOGIN_VERIFICATION_RESERVED";
 
 // Public request headers do not establish a trusted source address in this repo.
-// Use one durable administrator-authentication budget; managers use no such budget.
+// Use one durable administrator-authentication budget; management has separate
+// identifier budgets in managementLoginThrottle.
 // Successful attempts count too and never reset another caller's protection.
 export async function reserveAdminLogin(): Promise<string | null> {
   return prisma.$transaction(async tx => {

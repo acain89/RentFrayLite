@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { harness, postgres } from './helpers/checkout-harness.mjs';
 import { authHarness } from './helpers/auth-harness.mjs';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -46,7 +47,10 @@ async function populate(h,backend,count,changes={}) {
 async function atDate(h,checkout,now) {
   const price=h.load('lib/checkoutPricing.ts').calculateCheckoutPricing({plan:h.business.recurringPlans[0],paymentMethod:checkout.paymentMethod,now:new Date(now)});
   const data=Object.fromEntries(['billingCycle','dueDate','graceEndsAt','baseAmountCents','recurringChargesCents','initialLateFeeCents','dailyLateFeesCents','subtotalCents','platformFeeCents','lineItems'].map(key=>[key,price[key]]));
-  return h.db.checkoutSession.update({where:{id:checkout.id},data:{...data,totalCents:price.totalChargedCents}});
+  // Date-specific fixtures replace the entire unstarted financial expectation.
+  // Keep Phase 2 facts aligned without changing any existing transport assertion.
+  return h.db.checkoutSession.update({where:{id:checkout.id},data:{...data,totalCents:price.totalChargedCents,
+    expectedManagementNetCents:price.subtotalCents,rflApplicationFeeCents:price.platformFeeCents}});
 }
 async function assertReconciled(h,checkout,rows) {
   assert.equal((await h.start(checkout)).status,200); const params=h.calls.creates[0].params,[payment]=await h.payments();
@@ -56,6 +60,7 @@ async function assertReconciled(h,checkout,rows) {
   assert.equal(params.payment_intent_data.transfer_data.destination,h.business.stripeConnection.stripeAccountId);
   assert.equal(sum(params.line_items)-params.payment_intent_data.application_fee_amount,payment.businessProceedsCents);
   assert.equal(payment.businessProceedsCents,checkout.subtotalCents);assert.deepEqual(payment.lineItemsSnapshot,checkout.lineItems);
+  assert.equal(checkout.expectedManagementNetCents,payment.businessProceedsCents);assert.equal(payment.rflApplicationFeeCents,checkout.platformFeeCents);
   const fee=checkout.lineItems.find(item=>item.type==='PLATFORM_FEE'); assert.equal(params.line_items.filter(item=>item.price_data.product_data.name===fee.label).length,1);
   return {params,payment};
 }
@@ -82,7 +87,14 @@ for(const backend of backends) for(const method of ['ACH','CARD']) {
     const before=await h.db.checkoutSession.findUnique({where:{id:checkout.id}});
     assert.equal((await h.start(checkout)).status,500);assert.equal(h.calls.creates.length,0);assert.equal((await h.payments()).length,0);
     assert.deepEqual(await h.db.checkoutSession.findUnique({where:{id:checkout.id}}),before);
-    assert.ok(h.calls.errors.some(args=>String(args[0]).includes('transport exceeds')));
+    assert.deepEqual(h.calls.errors, [['RFL_OPERATION_FAILED', {
+      operation: 'checkout_transport_limit', category: 'CHECK_FAILED',
+      correlation: createHash('sha256').update(checkout.id).digest('hex'),
+    }]]);
+    const logs=JSON.stringify(h.calls.errors);
+    for(const privateValue of [checkout.id,checkout.firstName,checkout.lastName,checkout.phone,checkout.unitNumber]) {
+      if(privateValue)assert.ok(!logs.includes(JSON.stringify(privateValue)), 'Transport logs must not expose quote/payer data');
+    }
   });
   test(`${backend} ${method}: corrupted total fails closed even with consolidation`,async()=>{
     const h=await harness(method,backend);await populate(h,backend,99);const checkout=await h.prepare();

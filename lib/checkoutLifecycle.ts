@@ -1,6 +1,7 @@
 import { CheckoutSessionStatus, PaymentStatus, Prisma } from "@prisma/client";
 import type { Payment, PrismaClient } from "@prisma/client";
 import { canTransitionPaymentStatus } from "@/lib/paymentStatus";
+import { assertCheckoutSource } from "@/lib/customPayment";
 
 type CheckoutWrite = { kind: "started" | "failed" | "advanced" | "unchanged"; payment: Payment };
 const TRANSACTION_OPTIONS = { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 10000, timeout: 30000 };
@@ -15,7 +16,9 @@ export async function writeCheckoutLifecycle(
     await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Payment" WHERE "id" = ${paymentId} FOR UPDATE`);
     const payment = await tx.payment.findUnique({ where: { id: paymentId } });
     const checkout = await tx.checkoutSession.findUnique({ where: { id: checkoutId } });
+    if (checkout) assertCheckoutSource(checkout);
     if (!payment || !checkout || checkout.paymentId !== payment.id || checkout.businessId !== payment.businessId ||
+      payment.sourceType !== checkout.sourceType || (payment.checkoutAttemptId != null && payment.checkoutAttemptId !== checkout.id) ||
       checkout.planId !== payment.sourceId || checkout.billingCycle !== payment.billingCycle ||
       checkout.unitNumber !== payment.referenceLabel) throw new Error("Checkout ownership changed before persistence");
 

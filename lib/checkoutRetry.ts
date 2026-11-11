@@ -1,8 +1,10 @@
-import { PaymentSourceType, PaymentStatus, Prisma } from "@prisma/client";
+import { PaymentStatus, Prisma } from "@prisma/client";
 import type { CheckoutSession, Payment, PrismaClient } from "@prisma/client";
 import type Stripe from "stripe";
-import { canApplyStripePaymentState } from "@/lib/paymentStatus";
 import { lockActiveCheckoutBusiness } from "@/lib/checkoutBusinessLock";
+import { hasUnknownArchitecture, isLegacyCheckoutArchitecture, paymentMatchesCheckoutArchitecture, sameCheckoutArchitecture } from "@/lib/paymentArchitectureSnapshot";
+import { assertCurrentCheckoutQuote, getCheckoutCalendar } from "@/lib/checkoutCalendar";
+import { assertCheckoutSource, assertCustomPaymentQuote } from "@/lib/customPayment";
 
 const STRIPE_READ_OPTIONS: Stripe.RequestOptions = { timeout: 5000, maxNetworkRetries: 0 };
 const BLOCKED = "An existing payment cannot safely be replaced. Please try again or contact the business.";
@@ -45,29 +47,38 @@ function requireVerified(condition: unknown): asserts condition {
 function validateMetadata(metadata: Stripe.Metadata | null, payment: Payment, checkout: CheckoutSession) {
   const expected: Record<string, string> = {
     product: "RentFrayLite", paymentId: payment.id, checkoutSessionId: checkout.id,
-    businessId: payment.businessId, accountCode: checkout.accountCode, billingCycle: checkout.billingCycle,
+    businessId: payment.businessId, accountCode: checkout.accountCode, billingCycle: checkout.billingCycle ?? "",
   };
   for (const [key, value] of Object.entries(expected)) {
     requireVerified(metadata?.[key] === undefined || metadata[key] === value);
   }
+  if (checkout.sourceType === "CUSTOM_PAYMENT") requireVerified(metadata?.sourceType === "CUSTOM_PAYMENT");
+  else requireVerified(metadata?.sourceType === undefined || metadata.sourceType === "RECURRING_PLAN");
 }
 
-// Only immutable Stripe terminal evidence releases an obligation. Local FAILED
-// or EXPIRED, a decline, and the age of a reservation are never sufficient.
+// Reconcile only the payment owned by this checkout. Another checkout, even
+// with identical payer/unit/month details, is always an independent attempt.
 async function observeAttempt(
   tx: Prisma.TransactionClient, stripe: Stripe, payment: Payment,
-  accountCode: string, destination: string
+  accountCode: string
 ): Promise<Observation> {
   requireVerified(payment.stripeCheckoutSessionId);
   const checkout = await tx.checkoutSession.findUnique({
     where: { stripeCheckoutSessionId: payment.stripeCheckoutSessionId },
   });
   requireVerified(checkout && checkout.paymentId === payment.id &&
+    checkout.sourceType === payment.sourceType &&
     checkout.businessId === payment.businessId && checkout.accountCode === accountCode &&
     checkout.planId === payment.sourceId && checkout.billingCycle === payment.billingCycle &&
     checkout.unitNumber === payment.referenceLabel && checkout.paymentMethod === payment.paymentMethod &&
     checkout.totalCents === payment.totalChargedCents && checkout.platformFeeCents === payment.platformFeeCents &&
-    checkout.subtotalCents === payment.subtotalCents && payment.businessProceedsCents === payment.subtotalCents);
+    checkout.subtotalCents === payment.subtotalCents && payment.businessProceedsCents === payment.subtotalCents &&
+    paymentMatchesCheckoutArchitecture(payment, checkout));
+  // Unknown historical ownership cannot be substituted from today's business
+  // connection. Such payments stay readable/webhook-settleable, but cannot be
+  // resumed/replaced without independently established historical facts.
+  requireVerified(!hasUnknownArchitecture(payment));
+  const ownedDestination = payment.stripeConnectedAccountId;
   const session = await stripe.checkout.sessions.retrieve(payment.stripeCheckoutSessionId, {}, STRIPE_READ_OPTIONS);
   requireVerified(session.id === payment.stripeCheckoutSessionId && session.mode === "payment" &&
     (!session.client_reference_id || session.client_reference_id === payment.id) &&
@@ -86,14 +97,14 @@ async function observeAttempt(
     const intent = await stripe.paymentIntents.retrieve(intentId, {}, STRIPE_READ_OPTIONS);
     requireVerified(intent.id === intentId && intent.currency === "usd" &&
       intent.amount === payment.totalChargedCents && intent.application_fee_amount === payment.platformFeeCents &&
-      objectId(intent.transfer_data?.destination) === destination);
+      objectId(intent.transfer_data?.destination) === ownedDestination);
     validateMetadata(intent.metadata, payment, checkout);
     canceled = intent.status === "canceled" && intent.amount_received === 0;
     resumableIntent = ["requires_payment_method", "requires_confirmation", "requires_action"].includes(intent.status) &&
       intent.amount_received === 0;
   }
-  // Recovery can create a copy even after expiration, so it cannot release the
-  // obligation. A processing/retryable intent can settle after Checkout closes.
+  // A processing/retryable intent can settle after Checkout closes. Never
+  // create another hosted session for this attempt, even after expiration.
   const closed = session.status === "expired" || session.status === "complete";
   if (closed && session.payment_status === "unpaid" && !session.after_expiration?.recovery?.enabled &&
     (canceled || (session.status === "expired" && !intentId))) {
@@ -122,28 +133,31 @@ function canResume(payment: Payment, original: CheckoutSession, request: Checkou
     payment.payerPhone === request.phone && payment.paymentMethod === request.paymentMethod &&
     payment.subtotalCents === request.subtotalCents && payment.platformFeeCents === request.platformFeeCents &&
     payment.totalChargedCents === request.totalCents && sameSnapshot(payment.lineItemsSnapshot, request.lineItems) &&
-    original.firstName === request.firstName && original.lastName === request.lastName && original.phone === request.phone;
+    original.firstName === request.firstName && original.lastName === request.lastName && original.phone === request.phone &&
+    sameCheckoutArchitecture(original, request) && paymentMatchesCheckoutArchitecture(payment, request);
 }
 
 export async function reserveCheckoutAttempt(
-  prisma: PrismaClient, stripe: Stripe, request: CheckoutSession, businessName: string, destination: string,
-  resumeAccess: (stripeSessionId: string, checkoutId: string) => Promise<boolean> = async () => false
+  prisma: PrismaClient, stripe: Stripe, request: CheckoutSession, businessName: string,
+  resumeAccess: (stripeSessionId: string, checkoutId: string) => Promise<boolean> = async () => false,
+  quoteAccess: (checkoutId: string) => Promise<boolean> = async () => false
 ): Promise<Reservation> {
   return prisma.$transaction(async (tx): Promise<Reservation> => {
-    if (!await lockActiveCheckoutBusiness(tx, request.businessId)) {
+    const lockedBusiness = await lockActiveCheckoutBusiness(tx, request.businessId);
+    if (!lockedBusiness) {
       return { kind: "block", error: "This business is no longer accepting payments." };
     }
-    // Serialize the entire inspect/reserve decision, including when no rows yet
-    // exist. Hash collisions only serialize unrelated obligations unnecessarily.
-    const obligation = JSON.stringify([request.businessId, request.planId, request.billingCycle, request.unitNumber]);
-    await tx.$queryRaw(Prisma.sql`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${obligation}, 0))`);
-    // Share Payment row locks with webhook reconciliation and reread afterwards.
-    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Payment"
-      WHERE "businessId" = ${request.businessId} AND "sourceType" = 'RECURRING_PLAN'::"PaymentSourceType"
-        AND "sourceId" = ${request.planId} AND "billingCycle" = ${request.billingCycle}
-        AND "referenceLabel" = ${request.unitNumber} ORDER BY "id" FOR UPDATE`);
+    assertCheckoutSource(request);
+    if (request.sourceType === "RECURRING_PLAN") getCheckoutCalendar(lockedBusiness, new Date());
+    // Business serializes initial reservation; the checkout row is its durable
+    // identity. Payment first agrees with webhook/lifecycle lock ordering.
+    const initial = await tx.checkoutSession.findUnique({ where: { id: request.id } });
+    if (initial?.paymentId) {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Payment" WHERE "id" = ${initial.paymentId} FOR UPDATE`);
+    }
     await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "CheckoutSession" WHERE "id" = ${request.id} FOR UPDATE`);
     const current = await tx.checkoutSession.findUnique({ where: { id: request.id } });
+    if (current) assertCheckoutSource(current);
     const linkedResume = current && isLinkedCheckoutResume(current);
     if (!current || (!["REVIEWED", "CHECKOUT_STARTED"].includes(current.status) && !linkedResume) ||
       (current.expiresAt <= new Date() && !linkedResume)) {
@@ -156,60 +170,60 @@ export async function reserveCheckoutAttempt(
        !await resumeAccess(current.stripeCheckoutSessionId, current.id))) {
       return { kind: "block", error: BLOCKED };
     }
-    requireVerified(current.businessId === request.businessId && current.planId === request.planId &&
+    requireVerified(current.sourceType === request.sourceType && current.businessId === request.businessId && current.planId === request.planId &&
       current.billingCycle === request.billingCycle && current.unitNumber === request.unitNumber &&
       current.accountCode === request.accountCode && current.paymentMethod === request.paymentMethod &&
       current.firstName === request.firstName && current.lastName === request.lastName && current.phone === request.phone &&
       current.subtotalCents === request.subtotalCents && current.platformFeeCents === request.platformFeeCents &&
-      current.totalCents === request.totalCents && sameSnapshot(current.lineItems, request.lineItems));
-    const payments = await tx.payment.findMany({
-      where: {
-        businessId: request.businessId, sourceType: PaymentSourceType.RECURRING_PLAN,
-        sourceId: request.planId, billingCycle: request.billingCycle, referenceLabel: request.unitNumber,
-      }, orderBy: { id: "asc" },
-    });
-    // Scan ALL history, not just the newest record or statuses in the index.
-    const collectible: { payment: Payment; observation: Extract<Observation, { kind: "collectible" }> }[] = [];
-    const expired: Payment[] = [];
-    for (const payment of payments) {
+      current.totalCents === request.totalCents && sameSnapshot(current.lineItems, request.lineItems) &&
+      sameCheckoutArchitecture(current, request));
+    if (current.paymentId) {
+      const payment = await tx.payment.findUnique({ where: { id: current.paymentId } });
+      requireVerified(payment && payment.businessId === current.businessId &&
+        payment.sourceType === current.sourceType &&
+        (!payment.checkoutAttemptId || payment.checkoutAttemptId === current.id) &&
+        canResume(payment, current, current));
       if (payment.paidAt || [PaymentStatus.PAID, PaymentStatus.PENDING, PaymentStatus.DISPUTED, PaymentStatus.RETURNED]
         .includes(payment.status as "PAID" | "PENDING" | "DISPUTED" | "RETURNED")) {
-        return { kind: "block", error: "This billing cycle already has a settled, processing, or disputed payment." };
+        return { kind: "block", error: "This checkout already has a settled, processing, or disputed payment." };
       }
       // Missing IDs may represent an in-flight create or an ambiguous network
       // failure after Stripe created the session. Never expire these by age.
       if (!payment.stripeCheckoutSessionId) return { kind: "block", error: BLOCKED };
-      const observation = await observeAttempt(tx, stripe, payment, request.accountCode, destination);
-      if (observation.kind === "collectible") collectible.push({ payment, observation });
-      else if (canApplyStripePaymentState(payment.status, PaymentStatus.EXPIRED, { settled: false, disputeResolved: false })) expired.push(payment);
-    }
-    if (collectible.length) {
-      const attempt = collectible[0];
-      if (collectible.length === 1 && !expired.length && attempt.observation.url &&
-        (!current.paymentId || current.paymentId === attempt.payment.id) &&
-        (current.status === "REVIEWED" ||
-          (current.id === attempt.observation.checkout.id &&
-           current.stripeCheckoutSessionId === attempt.payment.stripeCheckoutSessionId)) &&
-        canResume(attempt.payment, attempt.observation.checkout, current) &&
-        await resumeAccess(attempt.payment.stripeCheckoutSessionId!, attempt.observation.checkout.id)) {
-        return { kind: "resume", payment: attempt.payment, checkoutId: attempt.observation.checkout.id, url: attempt.observation.url };
+      const observation = await observeAttempt(tx, stripe, payment, current.accountCode);
+      if (observation.kind === "collectible" && observation.checkout.id === current.id && observation.url &&
+        canResume(payment, observation.checkout, current) &&
+        await resumeAccess(payment.stripeCheckoutSessionId, current.id)) {
+        return { kind: "resume", payment, checkoutId: current.id, url: observation.url };
       }
       return { kind: "block", error: BLOCKED };
     }
     // A linked checkout must use its original Payment, never bind another one.
     if (current.paymentId || current.status === "CHECKOUT_STARTED" || current.stripeCheckoutSessionId) return { kind: "block", error: "Please begin a new payment checkout." };
-    for (const payment of expired) {
-      await tx.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.EXPIRED, expiredAt: new Date() } });
-    }
+    // An unstarted pre-Phase-2 checkout has no provable pricing version. Ask for
+    // a fresh snapshot rather than backfilling history or inventing ownership.
+    if (!isLegacyCheckoutArchitecture(current)) return { kind: "block", error: "Please begin a new payment checkout." };
+    // A lost/mismatched local pointer must never produce another Payment.
+    if (await tx.payment.findUnique({ where: { checkoutAttemptId: current.id } })) return { kind: "block", error: BLOCKED };
+    // Last decision before reserving a new immutable Payment. Management writers
+    // share the Business lock. A stale quote rolls back, rather than repricing it.
+    if (current.sourceType === "CUSTOM_PAYMENT") assertCustomPaymentQuote(current);
+    else await assertCurrentCheckoutQuote(tx, lockedBusiness, current, new Date());
+    if (!await quoteAccess(current.id)) return { kind: "block", error: "Checkout authorization unavailable. Please begin again." };
     const payment = await tx.payment.create({
       data: {
-        businessId: request.businessId, sourceType: PaymentSourceType.RECURRING_PLAN, sourceId: request.planId,
+        checkoutAttemptId: current.id,
+        businessId: request.businessId, sourceType: current.sourceType, sourceId: request.planId,
         status: PaymentStatus.CREATED, paymentMethod: request.paymentMethod,
         payerFirstName: request.firstName, payerLastName: request.lastName, payerPhone: request.phone,
-        referenceLabel: request.unitNumber, itemDescription: `${businessName} payment`,
+        referenceLabel: request.unitNumber, itemDescription: `${businessName} ${current.sourceType === "CUSTOM_PAYMENT" ? "Custom Payment" : "payment"}`,
         lineItemsSnapshot: request.lineItems as Prisma.InputJsonValue,
         subtotalCents: request.subtotalCents, platformFeeCents: request.platformFeeCents,
         totalChargedCents: request.totalCents, businessProceedsCents: request.subtotalCents, billingCycle: request.billingCycle,
+        pricingVersion: current.pricingVersion, chargeModel: current.chargeModel,
+        stripeConnectedAccountId: current.stripeConnectedAccountId,
+        expectedStripeProcessingFeeCents: current.expectedStripeProcessingFeeCents,
+        rflApplicationFeeCents: current.rflApplicationFeeCents,
       },
     });
     await tx.checkoutSession.update({ where: { id: request.id }, data: { paymentId: payment.id } });

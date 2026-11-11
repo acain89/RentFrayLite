@@ -1,0 +1,40 @@
+{
+  "historicalCommit": "223b6f853bf94475f30ca76a73ab85404307fd7c",
+  "approvedSourceEvidence": "Stage 6 final local verification, HEAD 66c3ffccce02bc22c7a651a52cc790fce2167434 plus approved Stage 1-6 working tree; independently matched verified source manifest before pinning",
+  "approvedSourceHashes": {
+    "lib/passwordRecovery.ts": "9d7c399b48559cdffd20cd02a60cf99eee0209bc10e689631e0cc92bbf6ddcd4",
+    "lib/smsDelivery.ts": "cd4f3fcfe0319ecae7f05de12acd2a24e5d60d338c9c81fd6194ac965217480c",
+    "lib/checkoutRetry.ts": "4a8cca6fd6b31ec7f16d6da0cc260cdc0de0d278041ab719803fdc1a2f710b47",
+    "lib/stripePaymentWebhook.ts": "f1ed8f24bbc824c3486a9d8b350a7cf2ea02bd62733daa52c3c882b8d151bf39",
+    "app/api/setup/route.ts": "35fbfe8c9fb7639e253149468b3c4dd2fc1e85551c7535e209076ef5c244e4c8",
+    "app/api/public/checkout/session/route.ts": "c1992db71b0d0987ccb5d0381276f81799157e78b7ca16ae600aeac34ed17f20",
+    "app/api/public/checkout/start/route.ts": "c641bcfb75f157eac2102451f1da14b8f186ff6b0ce023341b110a3ee1024310"
+  },
+  "migrationHashes": {
+    "prisma/migrations/20260715212807_rfl_initial_schema/migration.sql": "715b62d689c124900c60a6bc75561ee4c0e4e2a6c3fa6cb100bc7c0fec26a2ea",
+    "prisma/migrations/20260715222401_add_auth_sessions/migration.sql": "4124ce4243c90ba303b5ce9ec670770ac74082e9f2e6739e6a8cd45158d5083e",
+    "prisma/migrations/20260715222951_unique_manager_email/migration.sql": "92322ee281127aa70ee5ec6685090c98f64c138f244dac2823953b32268e3b86",
+    "prisma/migrations/20260716040619_add_setup_progress/migration.sql": "1d268a24a6972209f226e7edd6b0b8d346df1c2e1d16836cd7fa0f0efc13fc12",
+    "prisma/migrations/20260716184659_recurring_charge_billing_cycles/migration.sql": "9760ba98dfa7962b645d5f8c59001eadd3540ebdcc7bd1e7d08b7c5802b3291c",
+    "prisma/migrations/20260716191529_expanded_recurring_late_fees/migration.sql": "80c7e3351ea9d1bc0730e312b0fc8f3664ce5b2123d69e59e2a387904b26e887",
+    "prisma/migrations/20260719034157_add_checkout_sessions/migration.sql": "dc635b3498d30247c9de805d420cb2c85be9371f011a04651dc677c2baffff1f",
+    "prisma/migrations/20260719190611_add_sms_sending_status/migration.sql": "615bf6f4e7ba9d64aa80312dbb29c3c866f9f1580631f03393cdc87e9254e1d7",
+    "prisma/migrations/20260722042750_add_one_time_charges/migration.sql": "61b84ec075a4a14d6c13c7333d40dacc6008b9dbe1ab73041d185ad0be8bac6a",
+    "prisma/migrations/20260723014542_add_checkout_session_one_time_charge_ids/migration.sql": "990f203cb7cdb41dc9a51cb5d189f7098c6a1d3010ec26902ee4d928d112f614",
+    "prisma/migrations/20260821230000_harden_rfl_payment_uniqueness/migration.sql": "ec65fa9763ab6bf5ee594ac7d302c29a9f68480e906634eba23629cd320f32f6",
+    "prisma/migrations/20260823014500_simplify_rfl_recurring_only/migration.sql": "0106c000dd2b85a411f1d39c90889f2ac61a10682f2d32e8de121d3cb1d22c0f",
+    "prisma/migrations/20260823033000_remove_one_time_charges/migration.sql": "29d6e0101478fffeccd4b2bea2cd2b72b287d0a3e13dde5f2119ff4c112e9e1d",
+    "prisma/migrations/20261002120000_add_payment_architecture_snapshots/migration.sql": "6ca950ae70b08105c6fb25c0caaf79e56e30ac457e84df1a65b517944af15e66",
+    "prisma/migrations/20261025120000_add_business_billing_calendar/migration.sql": "6349df5b356263c9a0c90f21e69db5bb19c930cb7e0d794c6d09f720983d668a",
+    "prisma/migrations/20261025180000_independent_checkout_attempts/migration.sql": "63dd005cfc5ae88e094f1d1b11030fc297bfd5d3518388731afa1b11391d1150",
+    "prisma/migrations/20261025200000_add_custom_payments/migration.sql": "039749a109fdb1c2bdb6cad1ab775c44248ebf7e3c0186e3165dc4576f0f2655",
+    "prisma/migrations/20261025220000_stripe_direct_foundation/migration.sql": "d35e3a62660c6025f6a2ecb8f16e85ff398b321eafcdfd269d4c8d6c9c245d30",
+    "prisma/migrations/20261026010000_direct_financial_reconciliation/migration.sql": "ef1fc2a0ee03440ab6f4f1f0019064da171bb23c49f1d3c5f89e27415809ae05",
+    "prisma/migrations/20261026020000_payment_sms_outbox/migration.sql": "279c766c3259aa4e2ca65682c5a9bfa03f4be6529698426c30ca1ed30e5700f1",
+    "prisma/migrations/20261026030000_management_password_recovery/migration.sql": "0efc8e948565f64928247d816d7c3213fa1235b43c5e28cc997d7662fc4376c2",
+    "prisma/migrations/20261026040000_instant_payout_foundation/migration.sql": "41ef839e386efd240fc1dfa779177a1c177303bd5a2a0aaa1141a7fa18d4880d",
+    "prisma/migrations/20261026050000_public_request_budgets/migration.sql": "06f6622d7d3a2bc037156795e093de63ab73524391159510ae39b851456d9104",
+    "prisma/migrations/20261105010000_customer_refund_observation/migration.sql": "67b96f08045a2a662dae36a4371413aa91c3e16ce4a8e5b924c544575c8dd376",
+    "prisma/migrations/migration_lock.toml": "693566b52c49db47a2b0901d12400aa3d710d13a49f4a2a154b80c0505ed737c"
+  }
+}

@@ -43,6 +43,7 @@ type SavedCharge = {
 };
 
 type SaveResponse = {
+  version?: string;
   saved?: boolean;
   tiers?: Array<{
     recurringPlanId: string;
@@ -55,6 +56,7 @@ type SaveResponse = {
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 type Props = {
+  initialVersion?: string;
   initialTiers: InitialTier[];
   highestReachedStep: 1 | 2 | 3 | 4 | 5 | 6 | 7;
 };
@@ -184,10 +186,13 @@ function validateCharges(
 }
 
 export default function RecurringChargesClient({
+  initialVersion,
   initialTiers,
   highestReachedStep,
 }: Props) {
   const router = useRouter();
+  const serverVersion = useRef(initialVersion);
+  const knownCharges = useRef(new Map<string, { ids: Record<string,string>; group: string|null }>());
 
 const searchParams = useSearchParams();
 
@@ -371,8 +376,12 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        tiers: buildTierPayload(snapshot),
+        body: JSON.stringify({
+          expectedVersion: serverVersion.current,
+        tiers: buildTierPayload(snapshot.map(charge => ({ ...charge,
+          existingIdsByTier: { ...knownCharges.current.get(charge.clientKey)?.ids, ...charge.existingIdsByTier },
+          sharedChargeGroupId: charge.sharedChargeGroupId ?? knownCharges.current.get(charge.clientKey)?.group ?? null,
+        }))),
         advance,
       }),
     });
@@ -394,6 +403,15 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
       };
     }
 
+    if (data.version) serverVersion.current = data.version;
+    for (const charge of snapshot) {
+      const ids: Record<string,string> = {}; let group: string|null = null;
+      for (const tier of data.tiers) {
+        const row = tier.charges.find(item => item.clientKey === `${charge.clientKey}:${tier.recurringPlanId}`);
+        if (row) { ids[tier.recurringPlanId] = row.id; group = row.sharedChargeGroupId; }
+      }
+      knownCharges.current.set(charge.clientKey, { ids, group });
+    }
     if (snapshotRevision === revision.current) {
   skipNextAutosave.current = true;
 
@@ -584,6 +602,7 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
     ? "Monthly Charges"
     : "Add monthly charges"}
 </h1>
+<a href={"/setup/recurring/charges?incremental=1"+(settingsMode?"&mode=settings":"")}>Edit one tier at a time</a>
 
 <p>
   {settingsMode

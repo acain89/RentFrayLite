@@ -1,244 +1,37 @@
 "use client";
-
-import { useEffect, useMemo, useState } from "react";
-import type {
-  DashboardPayment,
-  DashboardPaymentStatus,
-} from "@/lib/dashboard";
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import type { DashboardPayment } from "@/lib/dashboard";
 import type { PaymentReadiness } from "@/lib/paymentReadiness";
-
-type PaymentFilter =
-  | "ALL"
-  | DashboardPaymentStatus;
-
-type ManagerDashboardClientProps = {
-  readiness: PaymentReadiness;
-  businessName: string;
-  accountCode: string;
-  managerName: string;
-  billingCycleLabel: string;
-  payments: DashboardPayment[];
-};
-
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
-
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-const emptyStateSymbols = ["$", "▤", "▣", "✓", "▥"] as const;
-
-function formatMoney(cents: number): string {
-  return currencyFormatter.format(cents / 100);
-}
-
-function formatTimestamp(timestamp: string): string {
-  return dateFormatter.format(new Date(timestamp));
-}
-
-function statusLabel(
-  status: DashboardPaymentStatus
-): string {
-  switch (status) {
-    case "PAID":
-      return "Paid";
-
-    case "PENDING":
-      return "Pending";
-
-    case "FAILED":
-      return "Failed";
-
-    case "RETURNED":
-      return "Returned";
-
-    case "DISPUTED":
-      return "Disputed";
-  }
-}
-
-export default function ManagerDashboardClient({
-  readiness,
-  businessName,
-  accountCode,
-  managerName,
-  billingCycleLabel,
-  payments,
-}: ManagerDashboardClientProps) {
-  const [filter, setFilter] =
-    useState<PaymentFilter>("ALL");
-
-  const [emptySymbolIndex, setEmptySymbolIndex] = useState(0);
-
-useEffect(() => {
-  if (payments.length > 0) {
-    return;
-  }
-
-  const interval = window.setInterval(() => {
-    setEmptySymbolIndex(
-      (current) =>
-        (current + 1) % emptyStateSymbols.length
-    );
-  }, 2500);
-
-  return () => {
-    window.clearInterval(interval);
-  };
-}, [payments.length]);
-
-  const paidPayments = useMemo(
-    () =>
-      payments.filter(
-        (payment) => payment.status === "PAID"
-      ),
-    [payments]
-  );
-
-  const collectedCents = useMemo(
-    () =>
-      paidPayments.reduce(
-        (total, payment) =>
-          total + payment.amountCents,
-        0
-      ),
-    [paidPayments]
-  );
-
-  const lateFeesCollectedCents = useMemo(
-    () =>
-      paidPayments.reduce(
-        (total, payment) =>
-          total + payment.lateFeeCents,
-        0
-      ),
-    [paidPayments]
-  );
-
-  const pendingCount = useMemo(
-    () =>
-      payments.filter(
-        (payment) => payment.status === "PENDING"
-      ).length,
-    [payments]
-  );
-
-  const failedCount = useMemo(
-    () =>
-      payments.filter(
-        (payment) => payment.status === "FAILED"
-      ).length,
-    [payments]
-  );
-
-const returnedCount = useMemo(
-  () =>
-    payments.filter(
-      (payment) => payment.status === "RETURNED"
-    ).length,
-  [payments]
-);
-
-const disputedCount = useMemo(
-  () =>
-    payments.filter(
-      (payment) => payment.status === "DISPUTED"
-    ).length,
-  [payments]
-);
-
-  const filteredPayments = useMemo(
-    () =>
-      filter === "ALL"
-        ? payments
-        : payments.filter(
-            (payment) => payment.status === filter
-          ),
-    [filter, payments]
-  );
-
-const filters: Array<{
-  value: PaymentFilter;
-  label: string;
-}> = [
-  {
-    value: "ALL",
-    label: "All",
-  },
-  {
-    value: "PAID",
-    label: "Paid",
-  },
-  {
-    value: "PENDING",
-    label: "Pending",
-  },
-  {
-    value: "FAILED",
-    label: "Failed",
-  },
-  {
-    value: "RETURNED",
-    label: "Returned",
-  },
-  {
-    value: "DISPUTED",
-    label: "Disputed",
-  },
-];
-
-  return (
-    <main className="rfl-dashboard-page">
-      <aside aria-label="Payment readiness" role="status">
-        <strong>{readiness.title}</strong>
-        {readiness.reasons.map((reason) => <p key={reason.code}><Link href={reason.route}>{reason.message}</Link></p>)}
-      </aside>
-      <header className="rfl-dashboard-header">
-        <div>
-          <p className="rfl-eyebrow">
-            Manager dashboard
-          </p>
-
-          <h1>{businessName}</h1>
-
-          <div className="rfl-dashboard-business-meta">
-            <span className="rfl-dashboard-account-code">
-             Account code:{" "}
-            <strong>{accountCode}</strong>
-            </span>
-
-            <span aria-hidden="true">•</span>
-
-            <span>
-              Signed in as {managerName}
-            </span>
-          </div>
-        </div>
-
-        <div className="rfl-history-header-actions">
-  <Link
-    className="rfl-secondary-button"
-    href="/manager/settings"
-  >
-    Settings
-  </Link>
-
-  <Link
-    className="rfl-secondary-button"
-    href="/manager/history"
-  >
-    History
-  </Link>
-
-  <button
+import { REPORT_STATE_HELP, REPORT_PAGE_SIZE, reportSearchParams, type ReportFilters } from "@/lib/transactionReportView";
+import { reportingTimestampFormatter } from "@/lib/reportingCalendar";
+type Props = {readiness:PaymentReadiness;businessName:string;accountCode:string;managerName:string;billingCycleLabel:string;
+  payments:DashboardPayment[];total:number;filters:ReportFilters;timeZone:string;legacyTimeZone:boolean;nextCycleAt:string};
+export default function ManagerDashboardClient(p:Props) {
+  const router=useRouter();
+  useEffect(()=>{
+    let timer:ReturnType<typeof setTimeout>,refreshed=false;
+    const check=()=>{
+      clearTimeout(timer);
+      const remaining=Date.parse(p.nextCycleAt)-Date.now();
+      if(remaining<=0){if(!refreshed){refreshed=true;router.refresh();}return;}
+      timer=setTimeout(check,Math.min(remaining+25,2147483647));
+    };
+    const visible=()=>{if(document.visibilityState==="visible")check();};
+    check();window.addEventListener("focus",check);document.addEventListener("visibilitychange",visible);
+    return()=>{clearTimeout(timer);window.removeEventListener("focus",check);document.removeEventListener("visibilitychange",visible);};
+  },[p.nextCycleAt,router]);
+  const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n/100);
+  const date=reportingTimestampFormatter(p.timeZone);
+  const href=(status:string,page=1)=>"/manager/dashboard?"+reportSearchParams({...p.filters,status},page);
+  return <main className="rfl-dashboard-page">
+    <aside aria-label="Payment readiness" role="status"><strong>{p.readiness.title}</strong>{p.readiness.reasons.map(r=><p key={r.code}><Link href={r.route}>{r.message}</Link></p>)}</aside>
+    <header className="rfl-dashboard-header"><div><p className="rfl-eyebrow">Manager dashboard</p><h1>{p.businessName}</h1>
+      <p>Account code: <strong>{p.accountCode}</strong> | Signed in as {p.managerName}</p></div>
+      <nav className="rfl-history-header-actions" aria-label="Management"><Link className="rfl-primary-button" href="/manager/history">Payment History</Link>
+        <Link className="rfl-secondary-button" href="/manager/settings">Manage</Link>
+        <button
   className="rfl-secondary-button rfl-dashboard-signout"
   type="button"
   onClick={async () => {
@@ -256,254 +49,23 @@ const filters: Array<{
   }}
 >
   Sign Out
-</button>
-</div>
-      </header>
-
-      <section className="rfl-dashboard-cycle-header">
-        <div>
-          <p>Current Billing Cycle</p>
-          <h2>{billingCycleLabel}</h2>
-        </div>
-      </section>
-
-     <section
-  className="rfl-dashboard-stats"
-  aria-label="Current billing cycle summary"
->
-  <article className="rfl-dashboard-stat rfl-dashboard-stat-primary">
-    <p>Collected</p>
-    <strong>{formatMoney(collectedCents)}</strong>
-    <span>Current billing cycle</span>
-  </article>
-
-  <article className="rfl-dashboard-stat">
-    <p>Late Fees Collected</p>
-    <strong>
-      {formatMoney(lateFeesCollectedCents)}
-    </strong>
-    <span>Included in Collected</span>
-  </article>
-
-  <article className="rfl-dashboard-stat">
-    <p>Pending</p>
-    <strong>{pendingCount}</strong>
-    <span>Payments processing</span>
-  </article>
-
-  <article className="rfl-dashboard-stat">
-    <p>Failed</p>
-    <strong>{failedCount}</strong>
-    <span>Payments requiring attention</span>
-  </article>
-
-  <article className="rfl-dashboard-stat">
-    <p>Returned</p>
-    <strong>{returnedCount}</strong>
-    <span>Completed payments returned</span>
-  </article>
-
-  <article className="rfl-dashboard-stat">
-    <p>Disputed</p>
-    <strong>{disputedCount}</strong>
-    <span>Payments under dispute</span>
-  </article>
-
-  <article className="rfl-dashboard-stat">
-    <p>Transactions</p>
-    <strong>{payments.length}</strong>
-    <span>Current cycle payment activity</span>
-  </article>
-</section>
-
-      <section className="rfl-dashboard-payments">
-        <header className="rfl-dashboard-payments-header">
-          <div>
-            <p className="rfl-eyebrow">
-              Current cycle activity
-            </p>
-            <h2>Payments</h2>
-          </div>
-
-          <div
-            className="rfl-dashboard-filters"
-            role="group"
-            aria-label="Filter payments"
-          >
-            {filters.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                className={
-                  filter === item.value
-                    ? "rfl-dashboard-filter rfl-dashboard-filter-active"
-                    : "rfl-dashboard-filter"
-                }
-                aria-pressed={
-                  filter === item.value
-                }
-                onClick={() =>
-                  setFilter(item.value)
-                }
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </header>
-
-        {filteredPayments.length === 0 ? (
-  <div className="rfl-dashboard-empty">
-    <div
-      className="rfl-dashboard-empty-icon"
-      aria-hidden="true"
-      key={emptySymbolIndex}
-    >
-      {emptyStateSymbols[emptySymbolIndex]}
-    </div>
-
-    <h3>
-      {payments.length === 0
-        ? "No payments yet"
-        : `No ${filter.toLowerCase()} payments`}
-    </h3>
-
-    <p>
-      {payments.length === 0
-        ? "Payments received during this billing cycle will appear here automatically."
-        : "There are no payments matching this filter in the current billing cycle."}
-    </p>
-  </div>
-) : (       
-
-          <>
-            <div className="rfl-dashboard-table-wrap">
-              <table className="rfl-dashboard-table">
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Reference</th>
-                    <th>Customer</th>
-                    <th>Amount</th>
-                    <th>Method</th>
-                    <th>Timestamp</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {filteredPayments.map((payment) => (
-                    <tr key={payment.id}>
-                      <td>
-                        <span
-                          className={`rfl-payment-status rfl-payment-status-${payment.status.toLowerCase()}`}
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="rfl-payment-status-dot"
-                          />
-
-                          {statusLabel(
-                            payment.status
-                          )}
-                        </span>
-                      </td>
-
-                      <td className="rfl-dashboard-reference">
-                        {payment.reference}
-                      </td>
-
-                      <td>{payment.customerName}</td>
-
-                      <td className="rfl-dashboard-amount">
-                        {formatMoney(
-                          payment.amountCents
-                        )}
-
-                        {payment.lateFeeCents > 0 ? (
-                          <small>
-                            Includes{" "}
-                            {formatMoney(
-                              payment.lateFeeCents
-                            )}{" "}
-                            late fee
-                          </small>
-                        ) : null}
-                      </td>
-
-                      <td>{payment.paymentMethod}</td>
-
-                      <td>
-                        {formatTimestamp(
-                          payment.timestamp
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="rfl-dashboard-mobile-payments">
-              {filteredPayments.map((payment) => (
-                <article
-                  key={payment.id}
-                  className="rfl-dashboard-mobile-payment"
-                >
-                  <header>
-                    <span
-                      className={`rfl-payment-status rfl-payment-status-${payment.status.toLowerCase()}`}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="rfl-payment-status-dot"
-                      />
-
-                      {statusLabel(payment.status)}
-                    </span>
-
-                    <strong>
-                      {formatMoney(
-                        payment.amountCents
-                      )}
-                    </strong>
-                  </header>
-
-                  <h3>{payment.reference}</h3>
-
-                  <p>{payment.customerName}</p>
-
-                  <dl>
-                    <div>
-                      <dt>Method</dt>
-                      <dd>{payment.paymentMethod}</dd>
-                    </div>
-
-                    <div>
-                      <dt>Timestamp</dt>
-                      <dd>
-                        {formatTimestamp(
-                          payment.timestamp
-                        )}
-                      </dd>
-                    </div>
-
-                    {payment.lateFeeCents > 0 ? (
-                      <div>
-                        <dt>Late fee included</dt>
-                        <dd>
-                          {formatMoney(
-                            payment.lateFeeCents
-                          )}
-                        </dd>
-                      </div>
-                    ) : null}
-                  </dl>
-                </article>
-              ))}
-            </div>
-          </>
-        )}
-      </section>
-    </main>
-  );
+</button></nav></header>
+    <section className="rfl-dashboard-cycle-header"><div><p>Current billing cycle</p><h2>{p.billingCycleLabel}</h2>
+      <p>{p.legacyTimeZone?"UTC display compatibility: property timezone is not configured.":p.timeZone}</p>
+      <p>Standard payments use their recorded billing cycle; Custom payments use their original transaction month in the display timezone.</p></div></section>
+    <section className="rfl-dashboard-payments"><header className="rfl-dashboard-payments-header"><h2>Payment transactions</h2>
+      <nav className="rfl-dashboard-filters" aria-label="Filter payments">{[["ALL","All"],["PENDING","Pending"],["SUCCESSFUL","Paid records"],["FAILED","Failed / returned / disputed"]].map(([value,label])=>
+        <Link key={value} className={"rfl-dashboard-filter"+(p.filters.status===value?" rfl-dashboard-filter-active":"")} href={href(value)}>{label}</Link>)}</nav></header>
+      <p>{p.total} matching transactions</p>
+      <p>{REPORT_STATE_HELP}</p><p>Original transaction dates show when the payment record was created, not settlement or refund dates.</p>
+      {p.payments.length===0?<div className="rfl-dashboard-empty"><h3>No matching payments</h3><p>Recorded payments for this cycle will appear here.</p></div>:
+      <div style={{overflowX:"auto"}}><table className="rfl-dashboard-table"><thead><tr>{["Tenant","Unit","Amount","Status","Method","Original transaction date","Type"].map(h=><th key={h}>{h}</th>)}</tr></thead>
+        <tbody>{p.payments.map(row=><tr key={row.id}><td>{row.customerName}</td><td>{row.reference}</td><td>{money(row.amountCents)}</td>
+          <td><span className={"rfl-payment-status rfl-payment-status-"+(row.status==="SUCCESSFUL"?"paid":row.status.toLowerCase())}>{row.statusDetail}</span></td>
+          <td>{row.paymentMethod}</td><td><time dateTime={row.timestamp} title={row.timestamp}>{date(row.timestamp)}</time></td><td>{row.paymentType}</td></tr>)}</tbody></table></div>}
+      <nav aria-label="Transaction pages"><p>Page {p.filters.page} of {Math.max(1,Math.ceil(p.total/REPORT_PAGE_SIZE))}</p>
+        {p.filters.page>1?<Link href={href(p.filters.status,p.filters.page-1)}>Previous</Link>:null}{" "}
+        {p.filters.page*REPORT_PAGE_SIZE<p.total?<Link href={href(p.filters.status,p.filters.page+1)}>Next</Link>:null}</nav>
+    </section>
+  </main>;
 }

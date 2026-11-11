@@ -1,3 +1,4 @@
+import { requireCredentialOrigin } from "@/lib/credentialRequest";
 import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
 import {
   SessionType,
@@ -9,7 +10,10 @@ import { readinessBusinessInclude } from "@/lib/businessPaymentReadiness";
 import { getConfigurationReasons } from "@/lib/paymentReadiness";
 import { getCurrentSession } from "@/lib/session";
 
-export async function POST() {
+export async function POST(request: Request) {
+  try { requireCredentialOrigin(request); } catch { return NextResponse.json({ error: "Invalid request origin." }, { status: 403 }); }
+  if (request.body) return NextResponse.json({ error: "This action does not accept a request body." }, { status: 400 });
+
   try {
     return await completeReview();
   } catch (error) {

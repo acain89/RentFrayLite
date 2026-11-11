@@ -1,17 +1,12 @@
 import { PaymentStatus } from "@prisma/client";
 
-export const DUPLICATE_PAYMENT_BLOCK_STATUSES: readonly PaymentStatus[] =
-  Object.values(PaymentStatus).filter(
-    blocksDuplicatePayment
-  );
-
 /**
  * RentFrayLite payment-status authority.
  *
  * SINGLE SOURCE OF TRUTH for:
  * - legal payment status transitions
  * - terminal/success/failure classifications
- * - whether a payment blocks another attempt
+ * Independent checkout admission is not determined by another payment's status.
  *
  * Stripe/webhook/routes should consume these rules rather than
  * independently deciding which state changes are valid.
@@ -149,21 +144,5 @@ export function isTerminalPaymentStatus(
     status === PaymentStatus.FAILED ||
     status === PaymentStatus.EXPIRED ||
     status === PaymentStatus.RETURNED
-  );
-}
-
-/**
- * A payment in one of these states should prevent another payment for the
- * same recurring-plan + unit + billing-cycle obligation.
- */
-export function blocksDuplicatePayment(
-  status: PaymentStatus
-): boolean {
-  return (
-    status === PaymentStatus.CREATED ||
-    status === PaymentStatus.CHECKOUT_STARTED ||
-    status === PaymentStatus.PENDING ||
-    status === PaymentStatus.PAID ||
-    status === PaymentStatus.DISPUTED
   );
 }

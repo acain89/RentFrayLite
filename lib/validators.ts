@@ -1,5 +1,8 @@
+import { isNewManagementPassword, isManagementLoginPassword, MANAGEMENT_PASSWORD_REQUIREMENT } from "@/lib/managementCredential";
 import { z } from "zod";
 import { isStrongAdminCredential } from "@/lib/adminCredential";
+import { isSupportedPropertyTimeZone } from "@/lib/managementBillingSetup";
+import { validatePropertyTimeZone } from "@/lib/propertyBillingCalendar";
 
 export const managerLoginSchema = z.object({
   type: z.literal("MANAGER"),
@@ -11,7 +14,8 @@ export const managerLoginSchema = z.object({
   password: z
     .string()
     .min(6, "Password must contain at least 6 characters.")
-    .max(128, "Password is too long."),
+    .max(128, "Password is too long.")
+    .refine(isManagementLoginPassword,"Unable to sign in."),
 });
 
 export const adminLoginSchema = z.object({
@@ -26,6 +30,10 @@ export const loginSchema = z.discriminatedUnion("type", [
 
 export const setupAccountSchema = z
   .object({
+    smsConsent: z.boolean().optional().default(false),
+    propertyTimeZone: z.string()
+      .refine(isSupportedPropertyTimeZone, "Choose a supported U.S. property timezone.")
+      .transform(validatePropertyTimeZone),
     businessName: z
       .string()
       .trim()
@@ -54,8 +62,7 @@ export const setupAccountSchema = z
       .transform((value) => value.toLowerCase()),
     password: z
       .string()
-      .min(6, "Password must contain at least 6 characters.")
-      .max(128, "Password is too long."),
+      .refine(isNewManagementPassword,MANAGEMENT_PASSWORD_REQUIREMENT),
     confirmPassword: z.string(),
     acceptedTerms: z.literal(true, {
       message:

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processQueuedSmsReceipts } from "@/lib/smsReceipts";
+import { loadSmsWorkerReport, loadSmsQueueHealth } from "@/lib/smsDeliveryReporting";
+import { prisma } from "@/lib/prisma";
+import { createHash, randomUUID } from "node:crypto";
+import { logOperationalError } from "@/lib/operationalLogging";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,34 +36,19 @@ export async function POST(request: NextRequest) {
   try {
     const results = await processQueuedSmsReceipts(20);
 
-    const sent = results.filter(
-      (result) => result.status === "SENT"
-    ).length;
-
-    const failed = results.filter(
-      (result) => result.status === "FAILED"
-    ).length;
-
-    const skipped = results.filter(
-      (result) => result.status === "SKIPPED"
-    ).length;
-
-    return NextResponse.json({
-      processed: results.length,
-      sent,
-      failed,
-      skipped,
-      results,
-    });
+    const report = await loadSmsWorkerReport(prisma, results);
+    const backlog = await loadSmsQueueHealth(prisma);
+    return NextResponse.json({ ...report, backlog });
   } catch (error) {
-    console.error("SMS queue processing failed:", error);
-
+    const reference = randomUUID();
+    logOperationalError("sms_worker_failed", error, reference);
     return NextResponse.json(
       {
         error: "SMS queue processing failed.",
       },
       {
         status: 500,
+        headers: { "X-RFL-Correlation": createHash("sha256").update(reference).digest("hex") },
       }
     );
   }

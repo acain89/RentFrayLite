@@ -14,7 +14,7 @@ import {
 /*
  * Compatibility export.
  *
- * billingCalendar.ts remains the real billing-cycle authority.
+ * Legacy compatibility export; configured properties use propertyBillingCalendar.ts.
  */
 export { getBillingCycle };
 
@@ -28,6 +28,7 @@ export type CheckoutPricingInput = {
   plan: CheckoutPricingPlan;
   paymentMethod: PaymentMethod;
   now?: Date;
+  propertyTimeZone?: string;
 };
 
 export type CheckoutPricingLineItem = {
@@ -84,10 +85,12 @@ export function calculateCheckoutPricing({
   plan,
   paymentMethod,
   now = new Date(),
+  propertyTimeZone,
 }: CheckoutPricingInput): CheckoutPricingResult {
   const financialState = getFinancialState({
     plan,
     now,
+    propertyTimeZone,
   });
 
   const platformFeeCents =

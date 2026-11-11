@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import bcrypt from 'bcryptjs';
+import { createHash, randomUUID } from 'node:crypto';
 import {authHarness,postgres,initialHash} from './helpers/auth-harness.mjs';
+import { installTransactionFault, assertFaultReached, captureRollbackState, assertRollbackState } from './helpers/transaction-fault-fixture.mjs';
 for(const backend of [...(postgres?['postgres']:[]),'isolated']){
  const label=backend+' B5';
  for(const type of ['MANAGER','ADMIN']){
@@ -19,7 +21,7 @@ for(const backend of [...(postgres?['postgres']:[]),'isolated']){
   });
   test(`${label}: expired ${type}, forged cookie, logout and copied token rejected`,async()=>{
    const h=await authHarness(backend);const t=await h.issue(type);await h.db.session.updateMany({where:{tokenHash:h.session.hashSessionToken(t)},data:{expiresAt:new Date(0)}});assert.equal(await h.session.getCurrentSession(),null);
-   h.use(t+'forged');assert.equal(await h.session.getCurrentSession(),null);const fresh=await h.issue(type);assert.equal((await h.load('app/api/auth/logout/route.ts').POST()).status,200);h.use(fresh);assert.equal(await h.session.getCurrentSession(),null);
+   h.use(t+'forged');assert.equal(await h.session.getCurrentSession(),null);const fresh=await h.issue(type);assert.equal((await h.load('app/api/auth/logout/route.ts').POST(new Request('https://example.test/api/auth/logout',{method:'POST',headers:{origin:'https://example.test'}}))).status,200);h.use(fresh);assert.equal(await h.session.getCurrentSession(),null);
   });
   test(`${label}: deleted ${type} cannot authorize`,async()=>{
    const h=await authHarness(backend);const t=await h.issue(type);await h.db[table].deleteMany({where:{id:type==='MANAGER'?h.managers[0].id:h.admins[0].id}});h.use(t);assert.equal(await h.session.getCurrentSession(),null);
@@ -87,19 +89,35 @@ for(const backend of [...(postgres?['postgres']:[]),'isolated']){
   const m=await h.db.manager.findUnique({where:{id:h.managers[0].id}});assert.equal(await bcrypt.compare('new-password',m.passwordHash),true);assert.equal(await bcrypt.compare('stale-password',m.passwordHash),false);
  });
  if(backend==='postgres')for(const failure of ['manager.update','session.deleteMany','auditLog.create'])for(const actor of ['manager','admin'])test(`${label}: real transaction rolls back ${actor} ${failure}`,async()=>{
-  const h=await authHarness(backend);const a=await h.issue(),b=await h.issue();if(actor==='admin')await h.issue('ADMIN');
-  const [model,method]=failure.split('.');const original=h.db[model][method],transaction=h.db.$transaction;
-  const inject=(tx,args)=>failure==='manager.update'?tx[model][method]({...args,where:{id:'missing-'+h.managers[0].id}}):failure==='session.deleteMany'?
-    tx.session.create({data:{tokenHash:h.session.hashSessionToken(a),type:'MANAGER',managerId:h.managers[0].id,businessId:h.businesses[0].id,expiresAt:new Date(Date.now()+10000)}}):
+  const h=await authHarness(backend);const a=await h.issue(),b=await h.issue(),other=await h.issue('MANAGER',1),admin=await h.issue('ADMIN');h.use(actor==='admin'?admin:a);
+  const scope={businessIds:h.businesses.map(x=>x.id),managerIds:h.managers.map(x=>x.id),adminIds:h.admins.map(x=>x.id)};
+  const tokens=[];
+  for(const business of h.businesses){
+   tokens.push(await h.db.verificationToken.create({data:{businessId:business.id,type:'PASSWORD_RESET',tokenHash:createHash('sha256').update(randomUUID()).digest('hex'),credentialFingerprint:'synthetic-binding',expiresAt:new Date(Date.now()+600000)}}));
+   await h.db.payment.create({data:{businessId:business.id,sourceType:'CUSTOM_PAYMENT',status:'PAID',paymentMethod:'ACH',payerFirstName:'Synthetic',payerLastName:'Rollback',payerPhone:'5555551234',itemDescription:'Retained synthetic snapshot',lineItemsSnapshot:[{label:'Original',amountCents:10000}],subtotalCents:10000,platformFeeCents:200,totalChargedCents:10200,businessProceedsCents:10000}});
+  }
+  const before=await captureRollbackState(h.db,scope),[model,method]=failure.split('.');
+  const expectedCode=failure==='manager.update'?'P2025':failure==='session.deleteMany'?'P2002':'P2003';
+  let proof;
+  const fault=installTransactionFault(h.db,model,method,async(tx,args)=>{
+   const manager=await tx.manager.findUnique({where:{id:h.managers[0].id}});
+   const token=await tx.verificationToken.findUnique({where:{id:tokens[0].id}});
+   const sessions=await tx.session.count({where:{managerId:manager.id}});
+   assert.equal(manager.passwordHash!==initialHash,failure!=='manager.update');
+   assert.equal(token.usedAt!==null,failure!=='manager.update');
+   assert.equal(sessions,failure==='auditLog.create'?0:2);
+   proof={actor,operation:failure,backendPid:(await tx.$queryRawUnsafe('SELECT pg_backend_pid() pid'))[0].pid,credentialWriteVisible:manager.passwordHash!==initialHash,tokenRevocationVisible:token.usedAt!==null,targetSessionCount:sessions};
+   return failure==='manager.update'?tx[model][method]({...args,where:{id:'missing-'+manager.id}}):failure==='session.deleteMany'?
+    tx.session.create({data:{tokenHash:h.session.hashSessionToken(a),type:'MANAGER',managerId:manager.id,businessId:h.businesses[0].id,expiresAt:new Date(Date.now()+10000)}}):
     tx[model][method]({...args,data:{...args.data,businessId:'missing-'+h.businesses[0].id}});
-  if(actor==='manager')h.db.$transaction=(fn,options)=>transaction.call(h.db,async tx=>fn(new Proxy(tx,{get(target,key){
-    if(key===model)return new Proxy(target[key],{get(delegate,op){return op===method?args=>inject(tx,args):typeof delegate[op]==='function'?delegate[op].bind(delegate):delegate[op];}});
-    return typeof target[key]==='function'?target[key].bind(target):target[key];
-  }})),options);
-  else h.db[model][method]=args=>inject({...h.db,[model]:{...h.db[model],[method]:original.bind(h.db[model])}},args);
-  try{await assert.rejects(()=>actor==='admin'?h.reset():h.change());}finally{h.db[model][method]=original;h.db.$transaction=transaction;}
+  });
+  try{await assert.rejects(()=>actor==='admin'?h.reset():h.change(),error=>error.name==='PrismaClientKnownRequestError'&&error.code===expectedCode);assertFaultReached(fault.state,expectedCode);}
+  finally{fault.restore();}
+  assertRollbackState(before,await captureRollbackState(h.db,scope));
   assert.equal((await h.db.manager.findUnique({where:{id:h.managers[0].id}})).passwordHash,initialHash);
   for(const t of [a,b]){h.use(t);assert.ok(await h.session.getCurrentSession());}
+  for(const t of [other,admin]){h.use(t);assert.ok(await h.session.getCurrentSession());}
+  console.log('RFL_ROLLBACK_FAULT_PROOF '+JSON.stringify({...proof,nativeCode:fault.state.errorCode,triggerCount:fault.state.calls,rollbackVerified:true}));
  });
  if(backend==='isolated')for(const failure of ['manager.update','session.deleteMany','auditLog.create'])for(const actor of ['manager','admin'])test(`${label}: ${actor} ${failure} rolls back credential update and revocation together`,async()=>{
   const h=await authHarness();const a=await h.issue(),b=await h.issue();if(actor==='admin')await h.issue('ADMIN');h.db.failures.add(failure);await assert.rejects(()=>actor==='admin'?h.reset():h.change(),/Injected/);h.db.failures.clear();

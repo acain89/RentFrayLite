@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminDashboardData } from "@/lib/adminDashboard";
+import { SMS_DELIVERY_STATES, type SmsDeliveryMetric } from "@/lib/smsDeliveryReporting";
 
 type BusinessSearchResult = {
   id: string;
@@ -356,21 +357,26 @@ async function deleteBusiness(): Promise<void> {
           </strong>
         </div>
 
+        <p>Payment periods use the original recorded payment confirmation date in UTC, not transaction creation, refund or dispute-resolution dates. All Time also includes records without a recorded event date.</p>
         <MetricTable
-          columns={["Payments", "Platform Revenue"]}
+          columns={["Payments", "Original Gross Tenant Fees", "Observed Customer Refunds", "Pending Customer Refunds"]}
           rows={[
             {
-              label: "Today",
+              label: "Today (UTC)",
               values: [
                 dashboard.payments.today.count,
                 money(dashboard.payments.today.revenueCents),
+                dashboard.payments.today.customerRefundCents == null ? "Unknown / unavailable" : money(dashboard.payments.today.customerRefundCents),
+                dashboard.payments.today.pendingCustomerRefundCents == null ? "Unknown / unavailable" : money(dashboard.payments.today.pendingCustomerRefundCents),
               ],
             },
             {
-              label: "This Month",
+              label: "This Month (UTC)",
               values: [
                 dashboard.payments.month.count,
                 money(dashboard.payments.month.revenueCents),
+                dashboard.payments.month.customerRefundCents == null ? "Unknown / unavailable" : money(dashboard.payments.month.customerRefundCents),
+                dashboard.payments.month.pendingCustomerRefundCents == null ? "Unknown / unavailable" : money(dashboard.payments.month.pendingCustomerRefundCents),
               ],
             },
             {
@@ -378,10 +384,16 @@ async function deleteBusiness(): Promise<void> {
               values: [
                 dashboard.payments.allTime.count,
                 money(dashboard.payments.allTime.revenueCents),
+                dashboard.payments.allTime.customerRefundCents == null ? "Unknown / unavailable" : money(dashboard.payments.allTime.customerRefundCents),
+                dashboard.payments.allTime.pendingCustomerRefundCents == null ? "Unknown / unavailable" : money(dashboard.payments.allTime.pendingCustomerRefundCents),
               ],
             },
           ]}
         />
+        <p>Refunds are observed subtotals for the original payment period, not complete historical totals. Principal and tenant-fee allocation is unknown. Gross tenant fees are not net revenue.</p>
+        <p>All-time paid records: {dashboard.payments.allTime.refundUnknownCount} with unknown refund history. Observed application fees: {dashboard.payments.allTime.observedApplicationFeeCents == null ? "Unknown / unavailable" : money(dashboard.payments.allTime.observedApplicationFeeCents)}; application-fee refunds: {dashboard.payments.allTime.observedApplicationFeeRefundCents == null ? "Unknown / unavailable" : money(dashboard.payments.allTime.observedApplicationFeeRefundCents)}; confirmed management corrections: {dashboard.payments.allTime.confirmedManagementCorrectionCents == null ? "Unknown / unavailable" : money(dashboard.payments.allTime.confirmedManagementCorrectionCents)}; observed processing costs: {dashboard.payments.allTime.observedProcessorFeeCents == null ? "Unknown / unavailable" : money(dashboard.payments.allTime.observedProcessorFeeCents)}. These are historical observations with incomplete coverage, not actual net profit.</p>
+        <p>Observed retained application fees on paid records: {dashboard.payments.allTime.observedPlatformRevenueCents == null ? "Unknown / unavailable" : money(dashboard.payments.allTime.observedPlatformRevenueCents)} (as of observation; incomplete coverage, not current net profit).</p>
+        <p>Disputes on current disputed records: {dashboard.issues.chargebacks.allTime.disputes.active} active, {dashboard.issues.chargebacks.allTime.disputes.lost} closed lost, {dashboard.issues.chargebacks.allTime.disputes.unknown} outcome unknown. Disputes closed won on paid records: {dashboard.payments.allTime.disputes.won}. Closed-lost disputes on ACH returns: {dashboard.issues.achReturns.allTime.disputes.lost}.</p>
       </section>
 
       <section className="rfl-admin-card">
@@ -390,33 +402,26 @@ async function deleteBusiness(): Promise<void> {
         </div>
 
         <article className="rfl-admin-table-section">
-          <h3>Failed SMS</h3>
+          <h3>SMS Delivery</h3>
+          <p>Current recorded outcomes by last update (UTC), not send attempts. Counts show total (tenant / management / legacy tenant / unknown recipient). Legacy aliases are excluded; a different known message remains separate. Unkeyed legacy receipts defer to the payment&apos;s tenant-success outbox. Historical failures without reliable delivery evidence are unknown. Sent means provider accepted, not confirmed delivered.</p>
           <MetricTable
-            columns={["Count"]}
-            rows={[
-              {
-                label: "Today",
-                values: [dashboard.issues.smsFailed.today],
-              },
-              {
-                label: "This Month",
-                values: [dashboard.issues.smsFailed.month],
-              },
-              {
-                label: "All Time",
-                values: [dashboard.issues.smsFailed.allTime],
-              },
-            ]}
+            columns={["Today (UTC)", "This Month (UTC)", "All Time"]}
+            rows={SMS_DELIVERY_STATES.map(state => ({
+              label: state === "SENT" ? "Sent (provider accepted)" : state.charAt(0) + state.slice(1).toLowerCase(),
+              values: [dashboard.issues.smsDelivery.today, dashboard.issues.smsDelivery.month, dashboard.issues.smsDelivery.allTime].map((m: SmsDeliveryMetric) =>
+                `${m.total[state]} (${m.tenant[state]} / ${m.management[state]} / ${m.legacy[state]} / ${m.unknownRecipient[state]})`),
+            }))}
           />
         </article>
 
         <article className="rfl-admin-table-section">
           <h3>ACH Returns</h3>
+          <p>Periods use the first recorded return date (UTC), not the original transaction date.</p>
           <MetricTable
-            columns={["Count", "Revenue Loss"]}
+            columns={["Count", "Original Tenant Fees"]}
             rows={[
               {
-                label: "Today",
+                label: "Today (UTC)",
                 values: [
                   dashboard.issues.achReturns.today.count,
                   money(
@@ -425,7 +430,7 @@ async function deleteBusiness(): Promise<void> {
                 ],
               },
               {
-                label: "This Month",
+                label: "This Month (UTC)",
                 values: [
                   dashboard.issues.achReturns.month.count,
                   money(
@@ -448,11 +453,12 @@ async function deleteBusiness(): Promise<void> {
 
         <article className="rfl-admin-table-section">
           <h3>Chargebacks</h3>
+          <p>Periods use the first recorded dispute date (UTC), not its resolution date.</p>
           <MetricTable
-            columns={["Count", "Revenue Loss"]}
+            columns={["Count", "Original Tenant Fees"]}
             rows={[
               {
-                label: "Today",
+                label: "Today (UTC)",
                 values: [
                   dashboard.issues.chargebacks.today.count,
                   money(
@@ -461,7 +467,7 @@ async function deleteBusiness(): Promise<void> {
                 ],
               },
               {
-                label: "This Month",
+                label: "This Month (UTC)",
                 values: [
                   dashboard.issues.chargebacks.month.count,
                   money(

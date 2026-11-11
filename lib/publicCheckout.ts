@@ -6,7 +6,8 @@ import {
 import { prisma } from "@/lib/prisma";
 
 export async function getPublicCheckoutBusiness(
-  rawAccountCode: string
+  rawAccountCode: string,
+  sourceType: "RECURRING_PLAN" | "CUSTOM_PAYMENT" = "RECURRING_PLAN"
 ) {
   let input: string;
   try { input = decodeURIComponent(rawAccountCode).trim().toUpperCase(); } catch { return null; }
@@ -24,7 +25,7 @@ export async function getPublicCheckoutBusiness(
     include: readinessBusinessInclude,
   });
 
-  if (!business || !(await getBusinessPaymentReadiness(business)).ready) return null;
+  if (!business || !(await getBusinessPaymentReadiness(business, undefined, sourceType)).ready) return null;
   return business;
 }
 

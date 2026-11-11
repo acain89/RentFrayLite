@@ -192,7 +192,7 @@ export default function SecuritySettingsClient({
       <section className="rfl-security-card">
         <div className="rfl-security-heading">
           <h2>Password</h2>
-          <p>Passwords must contain at least 6 characters.</p>
+          <p>New passwords must contain at least 12 characters and at most 72 UTF-8 bytes.</p>
         </div>
 
         <form className="rfl-security-form" onSubmit={updatePassword}>
@@ -221,8 +221,8 @@ export default function SecuritySettingsClient({
               setNewPassword(event.target.value);
               setPasswordMessage("");
             }}
-            minLength={6}
-            maxLength={128}
+            minLength={12}
+            maxLength={72}
             required
           />
 
@@ -237,8 +237,8 @@ export default function SecuritySettingsClient({
               setConfirmPassword(event.target.value);
               setPasswordMessage("");
             }}
-            minLength={6}
-            maxLength={128}
+            minLength={12}
+            maxLength={72}
             required
           />
 

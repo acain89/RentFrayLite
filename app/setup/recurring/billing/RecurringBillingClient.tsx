@@ -21,18 +21,19 @@ type RuleDraft = {
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 type SaveResponse = {
+  version?: string;
   saved?: boolean;
   redirectTo?: string;
   error?: string;
 };
 
 type Props = {
+  initialVersion?: string;
   initialRules: RuleDraft[];
   highestReachedStep: 1 | 2 | 3 | 4 | 5 | 6 | 7;
 };
 
 type EditableField =
-  | "dueDay"
   | "gracePeriodDays"
   | "initialLateFee"
   | "dailyLateFee"
@@ -83,7 +84,6 @@ function rulesAreIdentical(rules: RuleDraft[]): boolean {
 
 function validateRules(rules: RuleDraft[]): string | null {
   for (const rule of rules) {
-    const dueDay = integerValue(rule.dueDay);
     const graceDays = integerValue(rule.gracePeriodDays);
     const initialFee = moneyToCents(rule.initialLateFee);
     const dailyFee = moneyToCents(rule.dailyLateFee);
@@ -91,16 +91,8 @@ function validateRules(rules: RuleDraft[]): string | null {
       rule.dailyLateFeeMaxDays,
     );
 
-    if (dueDay === null || dueDay < 1 || dueDay > 31) {
-      return `Choose a due day from 1 through 31 for ${rule.tierName}.`;
-    }
-
-    if (
-      graceDays === null ||
-      graceDays < 1 ||
-      graceDays > 60
-    ) {
-      return `Choose a grace period from 1 through 60 days for ${rule.tierName}.`;
+    if (graceDays !== 3 && graceDays !== 4 && graceDays !== 5) {
+      return `Choose a grace period of 3, 4, or 5 days for ${rule.tierName}.`;
     }
 
     if (initialFee === null) {
@@ -132,10 +124,12 @@ function validateRules(rules: RuleDraft[]): string | null {
 }
 
 export default function RecurringBillingClient({
+  initialVersion,
   initialRules,
   highestReachedStep,
 }: Props) {
   const router = useRouter();
+  const serverVersion = useRef(initialVersion);
   const searchParams = useSearchParams();
 
   const settingsMode =
@@ -146,6 +140,11 @@ export default function RecurringBillingClient({
 
   const [sameRulesForAll, setSameRulesForAll] =
     useState(rulesAreIdentical(initialRules));
+
+  const individualRules = useRef<RuleDraft[] | null>(null);
+  const needsCalendarConfirmation = initialRules.some(rule =>
+    rule.dueDay !== "1" || !["3", "4", "5"].includes(rule.gracePeriodDays));
+  const [confirmCalendarChange, setConfirmCalendarChange] = useState(false);
 
   const [saveStatus, setSaveStatus] =
     useState<SaveStatus>("idle");
@@ -190,11 +189,11 @@ export default function RecurringBillingClient({
 
     if (checked) {
       setRules((current) => {
+        individualRules.current = current.map(rule => ({ ...rule }));
         const first = current[0];
 
         return current.map((rule) => ({
           ...rule,
-          dueDay: first.dueDay,
           gracePeriodDays: first.gracePeriodDays,
           initialLateFee: first.initialLateFee,
           dailyLateFee: first.dailyLateFee,
@@ -202,6 +201,9 @@ export default function RecurringBillingClient({
             first.dailyLateFeeMaxDays,
         }));
       });
+    } else if (individualRules.current) {
+      setRules(individualRules.current);
+      individualRules.current = null;
     }
 
     setError("");
@@ -213,6 +215,11 @@ export default function RecurringBillingClient({
     shared: boolean,
     advance: boolean,
   ): Promise<SaveResponse> {
+    if (needsCalendarConfirmation && !confirmCalendarChange) {
+      const message = "Confirm the billing calendar change before saving. Existing settings have not been changed.";
+      if (advance) setError(message);
+      return { error: message };
+    }
     const validationError = validateRules(snapshot);
 
     if (validationError) {
@@ -235,10 +242,12 @@ export default function RecurringBillingClient({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          expectedVersion: serverVersion.current,
           sameRulesForAll: shared,
+          confirmCalendarChange,
           rules: snapshot.map((rule) => ({
             recurringPlanId: rule.recurringPlanId,
-            dueDay: integerValue(rule.dueDay),
+            dueDay: 1,
             gracePeriodDays: integerValue(
               rule.gracePeriodDays,
             ),
@@ -274,6 +283,7 @@ export default function RecurringBillingClient({
       };
     }
 
+    if (data.version) serverVersion.current = data.version;
     if (snapshotRevision === revision.current) {
       setSaveStatus("saved");
     }
@@ -308,6 +318,10 @@ export default function RecurringBillingClient({
       initialRender.current = false;
       return;
     }
+
+    // Conversion of legacy rules always requires an explicit Continue/Done save;
+    // viewing the page, editing a fee, or checking consent must not autosave it.
+    if (needsCalendarConfirmation) return;
 
     const validationError = validateRules(rules);
 
@@ -424,7 +438,9 @@ export default function RecurringBillingClient({
         ? "Saved"
         : saveStatus === "error"
           ? "Couldn’t save"
-          : "Changes save automatically";
+          : needsCalendarConfirmation
+            ? "Changes save when you select Continue or Done"
+            : "Changes save automatically";
 
   const displayedRules = sameRulesForAll
     ? rules.slice(0, 1)
@@ -467,11 +483,12 @@ export default function RecurringBillingClient({
 
         <header className="rfl-setup-header">
           <h1>Billing Rules</h1>
+<a href={"/setup/recurring/billing?incremental=1"+(settingsMode?"&mode=settings":"")}>Edit one tier at a time</a>
 
           <p>
             {settingsMode
-              ? "Update your due dates, grace periods, and late-fee rules."
-              : "Choose when payments are due and how late fees should work."}
+              ? "Update grace periods and late-fee rules. Rent is due on the 1st."
+              : "Rent is due on the 1st of every month. Choose your grace period and late fees."}
           </p>
         </header>
 
@@ -482,10 +499,21 @@ export default function RecurringBillingClient({
             </h2>
 
             <p>
-              Only make changes here if your due date,
-              grace period, or late-fee policy has
+              Only make changes here if your
+              grace period or late-fee policy has
               actually changed.
             </p>
+          </section>
+        ) : null}
+
+        {needsCalendarConfirmation ? (
+          <section className="rfl-settings-notice">
+            <h2>Review your existing billing calendar</h2>
+            {initialRules.map(rule => <p key={rule.recurringPlanId}>{rule.tierName}: due day {rule.dueDay}, grace period {rule.gracePeriodDays} days.</p>)}
+            <label className="rfl-checkbox-field">
+              <input type="checkbox" checked={confirmCalendarChange} onChange={event => setConfirmCalendarChange(event.target.checked)} />
+              <span>I confirm changing rent to the 1st with the selected 3, 4, or 5-day grace period. Changes apply only when I select Continue or Done; historical transactions remain unchanged.</span>
+            </label>
           </section>
         ) : null}
 
@@ -500,7 +528,7 @@ export default function RecurringBillingClient({
 
           <span>
             <strong>
-              Use the same rules for all tiers
+              Use the same grace period and late fees for all tiers
             </strong>
 
             <small>
@@ -523,33 +551,7 @@ export default function RecurringBillingClient({
               </h2>
 
               <div className="rfl-setup-grid">
-                <div className="rfl-field">
-                  <label
-                    htmlFor={`due-day-${rule.recurringPlanId}`}
-                  >
-                    Rent due day
-                  </label>
-
-                  <input
-                    id={`due-day-${rule.recurringPlanId}`}
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    max={31}
-                    value={rule.dueDay}
-                    onChange={(event) =>
-                      updateRule(
-                        rule.recurringPlanId,
-                        "dueDay",
-                        event.target.value,
-                      )
-                    }
-                  />
-
-                  <p className="rfl-field-help">
-                    Day of the month, from 1 through 31.
-                  </p>
-                </div>
+                <div className="rfl-field"><strong>Rent due date</strong><p>1st of every month</p></div>
 
                 <div className="rfl-field">
                   <label
@@ -558,12 +560,8 @@ export default function RecurringBillingClient({
                     Grace period
                   </label>
 
-                  <input
+                  <select
                     id={`grace-${rule.recurringPlanId}`}
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    max={60}
                     value={rule.gracePeriodDays}
                     onChange={(event) =>
                       updateRule(
@@ -572,10 +570,15 @@ export default function RecurringBillingClient({
                         event.target.value,
                       )
                     }
-                  />
+                  >
+                    {!["3", "4", "5"].includes(rule.gracePeriodDays) ? <option value={rule.gracePeriodDays} disabled>Existing: {rule.gracePeriodDays} days — choose a new value</option> : null}
+                    {[3, 4, 5].map(days => <option key={days} value={String(days)}>{days} calendar days</option>)}
+                  </select>
 
                   <p className="rfl-field-help">
-                    Calendar days, including the due day.
+                    {["3", "4", "5"].includes(rule.gracePeriodDays)
+                      ? `Includes the 1st. Initial late fee begins on day ${Number(rule.gracePeriodDays) + 1}; daily late fees begin on day ${Number(rule.gracePeriodDays) + 2}, when enabled.`
+                      : "Choose 3, 4, or 5 days to see the new late-fee start dates."}
                   </p>
                 </div>
               </div>

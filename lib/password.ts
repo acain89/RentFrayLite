@@ -1,8 +1,10 @@
+import { isNewManagementPassword, MANAGEMENT_PASSWORD_REQUIREMENT } from "@/lib/managementCredential";
 import bcrypt from "bcryptjs";
 
 const PASSWORD_SALT_ROUNDS = 12;
 
 export async function hashPassword(password: string): Promise<string> {
+  if(!isNewManagementPassword(password))throw new Error(MANAGEMENT_PASSWORD_REQUIREMENT);
   return bcrypt.hash(password, PASSWORD_SALT_ROUNDS);
 }
 

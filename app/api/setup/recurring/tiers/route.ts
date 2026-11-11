@@ -1,4 +1,8 @@
+import { requireCredentialOrigin } from "@/lib/credentialRequest";
 import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
+import { ConfigurationError, assertLegacyConfiguration, legacyConfigurationVersion, readConfigurationJson } from "@/lib/recurringConfiguration";
+import { getRecurringConfiguration, inheritSharedConfiguration, patchRecurringConfiguration } from "@/lib/recurringTierOperations";
+import { validateRecurringPaymentConfiguration } from "@/lib/recurringValidation";
 ﻿import {
   SessionType,
   SetupStep,
@@ -19,12 +23,14 @@ const recurringTiersSchema = z.object({
         amountCents: z.number().int().min(1).max(MAX_PAYMENT_AMOUNT_CENTS),
       })
     )
-    .min(1)
-    .max(250),
+    .min(1),
+  expectedVersion: z.string().optional(),
   advance: z.boolean().optional().default(false),
 });
 
 export async function PUT(request: Request) {
+  try { requireCredentialOrigin(request); } catch { return NextResponse.json({ error: "Invalid request origin." }, { status: 403 }); }
+
   const session = await getCurrentSession();
 
   if (
@@ -42,8 +48,9 @@ export async function PUT(request: Request) {
   let body: unknown;
 
   try {
-    body = await request.json();
-  } catch {
+    body = await readConfigurationJson(request);
+  } catch (error) {
+    if (error instanceof ConfigurationError) return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json(
       { error: "Invalid request body." },
       { status: 400 }
@@ -86,6 +93,7 @@ const normalizedNames = parsed.data.tiers.map((tier) =>
   const submittedExistingIds = parsed.data.tiers
     .map((tier) => tier.id)
     .filter((id): id is string => Boolean(id));
+  if (new Set(submittedExistingIds).size !== submittedExistingIds.length) return NextResponse.json({ error: "Each rent tier must have a unique identity." }, { status: 400 });
 
   const ownedExistingPlans = await prisma.recurringPlan.findMany({
     where: {
@@ -109,6 +117,17 @@ const normalizedNames = parsed.data.tiers.map((tier) =>
   try {
     const savedTiers = await withManagerMutation(session,
       async (transaction) => {
+        const currentPlans = await assertLegacyConfiguration(transaction, businessId, parsed.data.expectedVersion);
+        const owned = await transaction.recurringPlan.findMany({ where: { businessId, id: { in: submittedExistingIds } }, select: { id: true } });
+        if (owned.length !== submittedExistingIds.length) throw new ConfigurationError("One or more rent tiers are invalid.", 400);
+        for (const tier of parsed.data.tiers) {
+          const current = currentPlans.find(plan => plan.id === tier.id);
+          if (current) {
+            const validation = validateRecurringPaymentConfiguration({ ...current, planName: tier.name, baseAmountCents: tier.amountCents,
+              recurringChargeCents: current.charges.filter(charge => charge.isActive).reduce((sum, charge) => sum + charge.amountCents, 0) });
+            if (!validation.ok) throw new ConfigurationError(validation.error, 400);
+          }
+        }
 await transaction.recurringPlan.updateMany({
   where: {
     businessId,
@@ -129,6 +148,7 @@ await transaction.recurringPlan.updateMany({
             const updated = await transaction.recurringPlan.update({
               where: {
                 id: tier.id,
+                businessId,
               },
               data: {
                 name: tier.name.trim(),
@@ -158,7 +178,7 @@ await transaction.recurringPlan.updateMany({
               name: tier.name.trim(),
               baseAmountCents: tier.amountCents,
               dueDay: 1,
-              gracePeriodDays: 0,
+              gracePeriodDays: 5,
               sortOrder: index,
               isActive: true,
             },
@@ -169,6 +189,7 @@ await transaction.recurringPlan.updateMany({
               sortOrder: true,
             },
           });
+          if (currentPlans.length) await inheritSharedConfiguration(transaction, businessId, created.id);
 
           saved.push({
             ...created,
@@ -199,18 +220,20 @@ await transaction.recurringPlan.updateMany({
           });
         }
 
-        return saved;
+        return { tiers: saved, version: await legacyConfigurationVersion(transaction, businessId) };
       }
     );
 
     return NextResponse.json({
       saved: true,
-      tiers: savedTiers,
+      tiers: savedTiers.tiers,
+      version: savedTiers.version,
       redirectTo: parsed.data.advance
         ? "/setup/recurring/charges"
         : undefined,
     });
   } catch (error) {
+    if (error instanceof ConfigurationError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof ManagerMutationUnauthorized) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     return NextResponse.json(
       { error: "Unable to save the rent tiers." },
@@ -218,4 +241,7 @@ await transaction.recurringPlan.updateMany({
     );
   }
 }
+
+export const GET = getRecurringConfiguration;
+export async function PATCH(request: Request) { return patchRecurringConfiguration(request, "tiers"); }
 

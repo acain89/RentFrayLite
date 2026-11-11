@@ -41,9 +41,9 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
-p l a y w r i g h t - r e p o r t / 
- 
- t e s t - r e s u l t s / 
- 
- # QA audit output
+# Generated browser test output; existing local artifacts are retained.
+/playwright-report/
+/test-results/
+
+# QA audit output
 /scripts/qa/output/

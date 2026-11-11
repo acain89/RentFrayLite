@@ -80,9 +80,16 @@ export function getStripeReadinessReasons(facts: StripeReadinessFacts | null, mo
   return reasons;
 }
 
-export function getPaymentReadiness(business: ReadinessBusiness, facts: StripeReadinessFacts | null, mode: PaymentReadiness["mode"], production: boolean, planId?: string): PaymentReadiness {
-  const configurationReasons = getConfigurationReasons(business);
-  const stripeReasons = getStripeReadinessReasons(facts, mode, production);
+export function getPaymentReadiness(business: ReadinessBusiness, facts: StripeReadinessFacts | null, mode: PaymentReadiness["mode"], production: boolean, planId?: string, sourceType: "RECURRING_PLAN" | "CUSTOM_PAYMENT" = "RECURRING_PLAN"): PaymentReadiness {
+  return getPaymentReadinessWithStripeReasons(business, getStripeReadinessReasons(facts, mode, production), mode, planId, sourceType);
+}
+
+/** Compose business setup with server-verified, architecture-specific eligibility. */
+export function getPaymentReadinessWithStripeReasons(business: ReadinessBusiness, stripeReasons: ReadinessReason[], mode: PaymentReadiness["mode"], planId?: string, sourceType: "RECURRING_PLAN" | "CUSTOM_PAYMENT" = "RECURRING_PLAN"): PaymentReadiness {
+  const configurationReasons = sourceType === "CUSTOM_PAYMENT"
+    ? ((!business.id || business.name.trim().length < 2 || !business.isActive || business.status === "DISABLED")
+      ? [reason("BUSINESS_UNAVAILABLE", "Your business account needs attention.", "/manager/settings")] : [])
+    : getConfigurationReasons(business);
   const reasons = [...configurationReasons];
   if (!business.accountCode || !/^[A-Z]{2}-\d{4}$/.test(business.accountCode)) reasons.push(reason("ACCOUNT_CODE", "Choose your permanent account code.", "/setup/account-code"));
   if (business.status !== "ACTIVE") reasons.push(reason("SETUP_INCOMPLETE", "Finish your account setup.", "/setup/account-code"));

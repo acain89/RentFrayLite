@@ -32,6 +32,7 @@ type SavedTier = {
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 type SaveResponse = {
+  version?: string;
   saved?: boolean;
   tiers?: SavedTier[];
   redirectTo?: string;
@@ -39,6 +40,7 @@ type SaveResponse = {
 };
 
 type RecurringTiersClientProps = {
+  initialVersion?: string;
   initialTiers: InitialTier[];
   highestReachedStep: 1 | 2 | 3 | 4 | 5 | 6 | 7;
 };
@@ -108,10 +110,13 @@ function validateTiers(tiers: TierDraft[]): string | null {
 }
 
 export default function RecurringTiersClient({
+  initialVersion,
   initialTiers,
   highestReachedStep,
 }: RecurringTiersClientProps) {
   const router = useRouter();
+  const serverVersion = useRef(initialVersion);
+  const knownIds = useRef(new Map(initialTiers.map(tier => [tier.id, tier.id])));
 
 const searchParams = useSearchParams();
 
@@ -202,8 +207,9 @@ const settingsMode =
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          expectedVersion: serverVersion.current,
           tiers: snapshot.map((tier) => ({
-            id: tier.id,
+            id: tier.id ?? knownIds.current.get(tier.clientKey) ?? null,
             clientKey: tier.clientKey,
             name: tier.name.trim(),
             amountCents: amountToCents(tier.amount),
@@ -228,7 +234,10 @@ const settingsMode =
       };
     }
 
+    if (data.version) serverVersion.current = data.version;
+    for (const tier of data.tiers) knownIds.current.set(tier.clientKey, tier.id);
     if (snapshotRevision === revision.current) {
+      if ((data.tiers?.length ?? 0) > 50) window.location.reload();
   setTiers((current) => {
     let changed = false;
 
@@ -365,7 +374,7 @@ const settingsMode =
   <p className="rfl-eyebrow">
     {settingsMode
       ? "Settings"
-      : "Recurring setup Â· Step 1 of 4"}
+      : "Recurring setup · Step 1 of 4"}
   </p>
 
   <p
@@ -386,6 +395,7 @@ const settingsMode =
       ? "Rent Tiers"
       : "Add your rent tiers"}
   </h1>
+<a href={"/setup/recurring/tiers?incremental=1"+(settingsMode?"&mode=settings":"")}>Edit one tier at a time</a>
 
   <p>
     {settingsMode

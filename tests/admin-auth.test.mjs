@@ -6,7 +6,7 @@ import ts from 'typescript';
 import bcrypt from 'bcryptjs';
 import {authHarness,postgres} from './helpers/auth-harness.mjs';
 const secret='isolated-admin-passphrase';
-async function login(h,code=secret,headers={}){return h.load('app/api/auth/login/route.ts').POST(new Request('https://example.test/api/auth/login',{method:'POST',headers,body:JSON.stringify({type:'ADMIN',code})}));}
+async function login(h,code=secret,headers={}){return h.load('app/api/auth/login/route.ts').POST(new Request('https://example.test/api/auth/login',{method:'POST',headers:{origin:'https://example.test','content-type':'application/json',...headers},body:JSON.stringify({type:'ADMIN',code})}));}
 const events=h=>h.db.auditLog.findMany({where:{action:'ADMIN_LOGIN_VERIFICATION_RESERVED'}});
 function spy(h){const passwords=h.load('lib/password.ts'),verify=passwords.verifyPassword;let count=0;passwords.verifyPassword=async(...args)=>{count++;return verify(...args);};return ()=>count;}
 for(const input of ['123456','',null,'x'.repeat(73),'😀'.repeat(19),' '.repeat(16),'123456'.padEnd(16,' '),'123456\0'.repeat(2)+'123456','\ud800'.repeat(16)])test(`B4 rejects weak/malformed credential ${JSON.stringify(input).slice(0,35)}`,async()=>{

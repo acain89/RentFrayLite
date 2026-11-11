@@ -1,3 +1,4 @@
+import { attachPublicBudgetStorage } from "./helpers/public-budget-storage.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -14,6 +15,7 @@ const plan = () => ({ id: "plan-owner", businessId: "owner", name: "Rent", isAct
   baseAmountCents: 100000, dueDay: 1, gracePeriodDays: 1, initialLateFeeCents: 0,
   dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0, sortOrder: 0, charges: [] });
 const business = () => ({ id: "owner", name: "Owner business", status: "ACTIVE", isActive: true,
+  propertyTimeZone: null, firstStandardBillingDate: null,
   accountCode: "AB-1234", accountCodeLockedAt: new Date(), setupStep: "COMPLETE", setupCompletedAt: new Date(),
   stripeConnection: { businessId: "owner", stripeAccountId: "acct_owner", readyForLive: true }, recurringPlans: [plan()] });
 const account = (id = "acct_owner") => ({ id, object: "account", country: "US", details_submitted: true,
@@ -28,6 +30,8 @@ export function harness({ key = "sk_live_fixture", environment = "production" } 
       livemode: key.includes("_live_"), card: { available: true }, us_bank_account: { available: true } },
     session: true, managerBusinessId: "owner", other: { ...business(), id: "other", accountCode: "CD-5678" },
     checkout: null, payment: null, stripeFailure: false };
+  const cookieJar = new Map();
+  const runtimeEnvironment = { NODE_ENV: environment, NEXT_PUBLIC_BASE_URL: "https://example.test", STRIPE_SECRET_KEY: key };
   const calls = { stripeCreates: [], writes: [], queries: [], resultAccess: [], sync: [] };
   const sessionRow = () => ({ id: "session-owner", tokenHash: "fixture-token", type: "MANAGER",
     managerId: "manager-owner", businessId: "owner", adminAccessId: null,
@@ -72,6 +76,7 @@ export function harness({ key = "sk_live_fixture", environment = "production" } 
       update: async ({ data }) => { calls.writes.push({ model: "checkout", data: clone(data) }); Object.assign(state.checkout, clone(data)); return clone(state.checkout); },
     },
     payment: {
+      count: async () => 0,
       updateMany: async ({ data }) => { Object.assign(state.payment, clone(data)); return { count: 1 }; },
       findUnique: async () => clone(state.payment), findFirst: async () => null, findMany: async () => [],
       create: async ({ data }) => { state.payment = { id: "payment-owner", paidAt: null, stripeCheckoutSessionId: null, ...clone(data) }; calls.writes.push({ model: "payment" }); return clone(state.payment); },
@@ -81,6 +86,7 @@ export function harness({ key = "sk_live_fixture", environment = "production" } 
     $queryRaw: async query => /clock_timestamp/.test(query.sql) ? [{ now: new Date() }] : [],
     $transaction: async operations => typeof operations === "function" ? operations(prisma) : Promise.all(operations),
   };
+  attachPublicBudgetStorage(prisma);
   const stripe = {
     accounts: { retrieve: async id => { if (state.stripeFailure) throw Error("Unavailable"); return clone(typeof id === "string" ? state.account : state.platform); } },
     paymentMethodConfigurations: { list: async () => ({ has_more: false, data: [clone(state.configuration)] }) },
@@ -89,7 +95,9 @@ export function harness({ key = "sk_live_fixture", environment = "production" } 
     } },
   };
   const mocks = {
+    "next/headers": { cookies: async () => ({ set: (name, value) => cookieJar.set(name, value), get: name => cookieJar.has(name) ? { value: cookieJar.get(name) } : undefined }) },
     "@prisma/client": require("@prisma/client"), "zod": require("zod"), "node:crypto": require("node:crypto"),
+    "node:util": { isDeepStrictEqual: require("node:util").isDeepStrictEqual },
     "bcryptjs": require("bcryptjs"), "react": require("react"), "react/jsx-runtime": require("react/jsx-runtime"),
     "next/link": { default: ({ children, ...props }) => require("react").createElement("a", props, children), __esModule: true },
     "next/server": { NextResponse: { json: (body, options) => Response.json(body, options) } },
@@ -113,17 +121,19 @@ export function harness({ key = "sk_live_fixture", environment = "production" } 
       throw Error(`Unexpected service import ${name}`);
     };
     vm.runInThisContext(`(function(require,module,exports,process,console){${output}\n})`, { filename })(
-      localRequire, mod, mod.exports, { env: { NODE_ENV: environment, STRIPE_SECRET_KEY: key } }, { error() {}, warn() {} });
+      localRequire, mod, mod.exports, { env: runtimeEnvironment }, { error() {}, warn() {} });
     cache.set(relative, mod.exports); return mod.exports;
   }
   const readiness = () => load("lib/businessPaymentReadiness.ts").getBusinessPaymentReadiness(clone(state.business));
-  const request = (body, method = "POST") => new Request("https://example.test/api", { method, body: JSON.stringify(body) });
+  const request = (body, method = "POST") => new Request("https://example.test/api", { method, headers: {origin:"https://example.test","content-type":"application/json"}, body: JSON.stringify({ ...body,
+    ...(Array.isArray(body?.tiers)||Array.isArray(body?.rules)?{expectedVersion:body.expectedVersion??load("lib/recurringConfiguration.ts").configurationFingerprint(state.business.recurringPlans.filter(p=>p.isActive))}:{}),
+  }) });
   async function prepare(method = "ACH") {
     const response = await load("app/api/public/checkout/session/route.ts").POST(request({ accountCode: "AB-1234", planId: "plan-owner", unitNumber: "101", firstName: "Test", lastName: "Payer", phone: "5555551234", paymentMethod: method }));
     assert.equal(response.status, 201); state.checkout.status = "REVIEWED";
   }
   const start = () => load("app/api/public/checkout/start/route.ts").POST(request({ checkoutSessionId: "checkout-owner" }));
-  return { state, calls, load, readiness, request, prepare, start };
+  return { state, calls, load, readiness, request, prepare, start, runtimeEnvironment };
 }
 
 const notReadyCases = [
@@ -164,12 +174,15 @@ for (const [name, change, code] of notReadyCases) {
   });
 }
 
-for (const method of ["ACH", "CARD"]) test(`${method}: real manager tier/billing/review → code → lookup → checkout reconciles`, async () => {
+for (const method of ["ACH", "CARD"]) test(`${method}: real manager tier/billing/review â†’ code â†’ lookup â†’ checkout reconciles`, async () => {
   const h = harness(); Object.assign(h.state.business, { status: "SETUP", setupStep: "CONFIGURE_RECURRING_TIERS", accountCode: null, accountCodeLockedAt: null, setupCompletedAt: null, recurringPlans: [] });
   assert.equal((await h.load("app/api/setup/recurring/tiers/route.ts").PUT(h.request({ tiers: [{ id: null, clientKey: "new", name: "Rent", amountCents: 100000 }], advance: true }, "PUT"))).status, 200);
-  assert.equal((await h.readiness()).configurationReady, false);
-  assert.equal((await h.load("app/api/setup/recurring/billing/route.ts").PUT(h.request({ sameRulesForAll: true, advance: true, rules: [{ recurringPlanId: "plan-owner", dueDay: 1, gracePeriodDays: 1, initialLateFeeCents: 0, dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0 }] }, "PUT"))).status, 200);
-  assert.equal((await h.load("app/api/setup/recurring/review/route.ts").POST()).status, 200);
+  // New tiers now have valid fixed-date/5-day defaults; setup is still incomplete.
+  assert.equal((await h.readiness()).configurationReady, true);
+  assert.equal((await h.readiness()).ready, false);
+  assert.equal(h.state.business.recurringPlans[0].gracePeriodDays, 5);
+  assert.equal((await h.load("app/api/setup/recurring/billing/route.ts").PUT(h.request({ sameRulesForAll: true, confirmCalendarChange: true, advance: true, rules: [{ recurringPlanId: "plan-owner", dueDay: 1, gracePeriodDays: 5, initialLateFeeCents: 0, dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0 }] }, "PUT"))).status, 200);
+  assert.equal((await h.load("app/api/setup/recurring/review/route.ts").POST(new Request("https://example.test/api/setup/recurring/review", { method: "POST", headers: { origin: "https://example.test" } }))).status, 200);
   assert.equal((await h.readiness()).canChooseAccountCode, true);
   assert.equal((await h.load("app/api/setup/account-code/route.ts").POST(h.request({ accountCode: "AB-1234", businessId: "other" }))).status, 200);
   assert.equal((await h.readiness()).readyForLive, true);
@@ -189,8 +202,10 @@ for (const method of ["ACH", "CARD"]) test(`${method}: real manager tier/billing
 test("production test key is never ready/live; development test remains usable", async () => {
   const prod = harness({ key: "sk_test_fixture" }); await prod.prepare().then(() => assert.fail("production test accepted"), error => assert.match(error.message, /404/));
   assert.equal((await prod.readiness()).ready, false); assert.equal((await prod.readiness()).readyForLive, false);
-  const live = harness(); await live.prepare(); prod.state.checkout = clone(live.state.checkout);
-  assert.equal((await prod.start()).status, 409); assert.equal(prod.state.payment, null); assert.equal(prod.calls.stripeCreates.length, 0);
+  // Keep the genuine issuing cookie and key; switch only the fixture mode.
+  const promoted = harness({ key: "sk_test_fixture", environment: "development" }); await promoted.prepare();
+  promoted.runtimeEnvironment.NODE_ENV = "production";
+  assert.equal((await promoted.start()).status, 409); assert.equal(promoted.state.payment, null); assert.equal(promoted.calls.stripeCreates.length, 0);
   for (const key of ["sk_test_fixture", "rk_test_fixture"]) {
     const h = harness({ key, environment: "development" }); const r = await h.readiness();
     assert.equal(r.ready, true); assert.equal(r.readyForLive, false); assert.equal(r.title, "Ready for test payments");
@@ -228,7 +243,7 @@ test("manager session ownership mismatch and unauthenticated callers cannot read
     const codes = h.load("app/api/setup/account-code/route.ts");
     assert.equal((await codes.GET()).status, 401); assert.equal((await codes.POST(h.request({ accountCode: "CD-5678" }))).status, 401);
     for (const route of ["tiers", "billing", "charges"]) assert.equal((await h.load(`app/api/setup/recurring/${route}/route.ts`).PUT(h.request({}, "PUT"))).status, 401);
-    assert.equal((await h.load("app/api/setup/recurring/review/route.ts").POST()).status, 401);
+    assert.equal((await h.load("app/api/setup/recurring/review/route.ts").POST(new Request("https://example.test/api/setup/recurring/review", { method: "POST", headers: { origin: "https://example.test" } }))).status, 401);
     assert.equal(h.calls.queries.length, 0); assert.equal(h.calls.writes.length, 0);
   }
 });
@@ -253,8 +268,8 @@ test("an existing open Stripe checkout cannot be reopened after readiness is los
 test("completed manager edits and repeated review preserve completion history", async () => {
   const h = harness(); const saved = clone(h.state.business);
   assert.equal((await h.load("app/api/setup/recurring/tiers/route.ts").PUT(h.request({ tiers: [{ id: "plan-owner", clientKey: "existing", name: "Rent", amountCents: 100000 }], advance: true }, "PUT"))).status, 200);
-  assert.equal((await h.load("app/api/setup/recurring/billing/route.ts").PUT(h.request({ sameRulesForAll: true, advance: true, rules: [{ recurringPlanId: "plan-owner", dueDay: 1, gracePeriodDays: 1, initialLateFeeCents: 0, dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0 }] }, "PUT"))).status, 200);
-  assert.equal((await h.load("app/api/setup/recurring/review/route.ts").POST()).status, 200);
+  assert.equal((await h.load("app/api/setup/recurring/billing/route.ts").PUT(h.request({ sameRulesForAll: true, confirmCalendarChange: true, advance: true, rules: [{ recurringPlanId: "plan-owner", dueDay: 1, gracePeriodDays: 5, initialLateFeeCents: 0, dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0 }] }, "PUT"))).status, 200);
+  assert.equal((await h.load("app/api/setup/recurring/review/route.ts").POST(new Request("https://example.test/api/setup/recurring/review", { method: "POST", headers: { origin: "https://example.test" } }))).status, 200);
   assert.equal(h.state.business.setupStep, "COMPLETE"); assert.deepEqual(h.state.business.setupCompletedAt, saved.setupCompletedAt);
   assert.equal(h.state.business.accountCode, saved.accountCode);
 });

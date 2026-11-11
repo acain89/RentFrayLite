@@ -1,3 +1,4 @@
+import { logOperationalError } from "@/lib/operationalLogging";
 import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
 import { SessionType } from "@prisma/client";
 import { NextResponse } from "next/server";
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(accountLink.url);
   } catch (error) {
     if (error instanceof ManagerMutationUnauthorized) return NextResponse.redirect(new URL("/login/manager", origin));
-    console.error("Unable to refresh Stripe onboarding:", error);
+    logOperationalError("stripe_refresh_failed", error, session.business.id);
 
     return NextResponse.redirect(
       new URL("/setup/stripe?error=stripe", origin)

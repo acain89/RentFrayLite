@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PROPERTY_TIME_ZONE_OPTIONS } from "@/lib/managementBillingSetup";
+
+import { MANAGEMENT_SMS_DISCLOSURE } from "@/lib/smsConsent";
 
 type SetupResponse = {
   redirectTo?: string;
@@ -37,6 +40,8 @@ export default function SetupAccountClient() {
           ownerName: formData.get("ownerName"),
           contactEmail: formData.get("contactEmail"),
           contactPhone: formData.get("contactPhone"),
+          smsConsent: formData.get("smsConsent") === "yes",
+          propertyTimeZone: formData.get("propertyTimeZone"),
           managerEmail: formData.get("managerEmail"),
           password: formData.get("password"),
           confirmPassword: formData.get("confirmPassword"),
@@ -71,7 +76,7 @@ export default function SetupAccountClient() {
           <p className="rfl-eyebrow">Step 1 of 4</p>
           <h1>Create your business account</h1>
           <p>
-            Start accepting payments in just a few minutes.
+            Set up your property and its first standard billing cycle.
           </p>
         </header>
 
@@ -127,6 +132,19 @@ export default function SetupAccountClient() {
             </div>
           </div>
 
+          <label><input type="checkbox" name="smsConsent" value="yes" /> {MANAGEMENT_SMS_DISCLOSURE}</label>
+          <p>Payment SMS Notifications default to ON. No texts are sent without your consent and a valid number.</p>
+
+          <div className="rfl-field">
+            <label htmlFor="propertyTimeZone">Property timezone</label>
+            <select id="propertyTimeZone" name="propertyTimeZone" defaultValue="America/Chicago" required>
+              {PROPERTY_TIME_ZONE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label} ({option.value})</option>
+              ))}
+            </select>
+            <p className="rfl-field-help">Use the timezone where the property is located. The first standard billing cycle begins on the next 1st after account creation.</p>
+          </div>
+
           <div className="rfl-setup-section">
             <h2>Manager login</h2>
             <p>This will be the login used to manage the account.</p>
@@ -151,8 +169,8 @@ export default function SetupAccountClient() {
                 name="password"
                 type={showPasswords ? "text" : "password"}
                 autoComplete="new-password"
-                minLength={6}
-                maxLength={128}
+                minLength={12}
+                maxLength={72}
                 required
               />
             </div>
@@ -166,8 +184,8 @@ export default function SetupAccountClient() {
                 name="confirmPassword"
                 type={showPasswords ? "text" : "password"}
                 autoComplete="new-password"
-                minLength={6}
-                maxLength={128}
+                minLength={12}
+                maxLength={72}
                 required
               />
             </div>

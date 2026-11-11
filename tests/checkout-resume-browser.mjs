@@ -13,7 +13,7 @@ try { for(const method of ['ACH','CARD']) {
   if(req.method==='POST'){
    h.cookieJar.clear();for(const item of (req.headers.cookie??'').split(';')){const [k,...v]=item.trim().split('=');if(k)h.cookieJar.set(k,v.join('='));}
    let body='';for await(const chunk of req)body+=chunk;
-   const response=await h.load('app/api/public/checkout/start/route.ts').POST(new Request(origin+req.url,{method:'POST',body}));
+   const response=await h.load('app/api/public/checkout/start/route.ts').POST(new Request(origin+req.url,{method:'POST',headers:{'content-type':'application/json'},body}));
    res.statusCode=response.status;res.setHeader('Content-Type','application/json');
    res.setHeader('Set-Cookie',[...h.cookieJar].map(([k,v])=>{const options=h.calls.cookieOptions.get(k);assert.equal(options.path,'/');return `${k}=${v}; Path=${options.path}; HttpOnly; SameSite=Lax; Max-Age=${options.maxAge}`;}));res.end(await response.text());return;
   }

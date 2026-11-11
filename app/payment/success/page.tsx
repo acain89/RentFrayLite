@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { PaymentStatus, SmsReceiptStatus } from "@prisma/client";
+import { PaymentStatus } from "@prisma/client";
+import { smsReceiptMessage } from "@/lib/smsDeliveryReporting";
 import { notFound } from "next/navigation";
 import { getPaymentResult } from "@/lib/paymentResult";
+import { formatReportingTimestamp, reportingTimeZone } from "@/lib/reportingCalendar";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -42,16 +44,6 @@ function statusContent(status: PaymentStatus, method: string | null) {
   }
 }
 
-function receiptMessage(status?: SmsReceiptStatus): string {
-  switch (status) {
-    case SmsReceiptStatus.SENT: return "Your SMS receipt has been sent.";
-    case SmsReceiptStatus.QUEUED:
-    case SmsReceiptStatus.SENDING: return "Your SMS receipt is being prepared for delivery.";
-    case SmsReceiptStatus.FAILED: return "Your payment is confirmed, but the SMS receipt could not be delivered. Keep this page as your confirmation.";
-    default: return "Keep this page as your payment confirmation.";
-  }
-}
-
 function breakdown(snapshot: unknown): { label: string; amountCents: number }[] {
   if (!Array.isArray(snapshot)) return [];
   return snapshot.flatMap((item) => {
@@ -66,8 +58,15 @@ export default async function PaymentSuccessPage({ searchParams }: Props) {
   const params = await searchParams;
   const result = await getPaymentResult(params.accountCode, params.session_id);
   if (!result) notFound();
-  const { payment, accountCode, stripeSessionId } = result;
+  const { payment, outcome, accountCode, stripeSessionId } = result;
   const content = statusContent(payment.status, payment.paymentMethod);
+  const timeZone = reportingTimeZone(payment.business.propertyTimeZone ?? null);
+  const statusDateLabel = payment.status === PaymentStatus.PAID ? "Original payment confirmation"
+    : payment.status === PaymentStatus.PENDING ? "Processing first recorded"
+    : payment.status === PaymentStatus.FAILED ? "Failure first recorded"
+    : payment.status === PaymentStatus.EXPIRED ? "Checkout expiry recorded"
+    : payment.status === PaymentStatus.RETURNED ? "Return first recorded"
+    : payment.status === PaymentStatus.DISPUTED ? "Dispute first recorded" : "Checkout start recorded";
   const statusDate = payment.status === PaymentStatus.PAID ? payment.paidAt
     : payment.status === PaymentStatus.PENDING ? payment.pendingAt
     : payment.status === PaymentStatus.FAILED ? payment.failedAt
@@ -83,27 +82,31 @@ export default async function PaymentSuccessPage({ searchParams }: Props) {
     <main className="rfl-payment-result-page">
       <section className="rfl-payment-result-card" aria-labelledby="payment-result-heading">
         <p className="rfl-payment-result-brand">RentFrayLite</p>
-        <h1 id="payment-result-heading">{content.heading}</h1>
-        <p className="rfl-payment-result-message" role="status">{content.message}</p>
+        <h1 id="payment-result-heading">{payment.status === PaymentStatus.RETURNED ? content.heading : outcome.refundState === "FULL" ? "Payment fully refunded" : outcome.refundState === "PARTIAL" ? "Payment partially refunded" : outcome.disputeOutcome === "ACTIVE" ? "Payment disputed" : outcome.disputeOutcome && outcome.disputeOutcome !== "UNKNOWN" ? outcome.statusLabel : content.heading}</h1>
+        <p className="rfl-payment-result-message" role="status">{payment.status === PaymentStatus.RETURNED ? content.message : outcome.refundState === "FULL" || outcome.refundState === "PARTIAL" ? "The original payment is preserved below. Observed customer refunds are shown separately; principal and fee allocation is unavailable." : outcome.disputeOutcome ? "The recorded dispute outcome is shown below. Contact the business for details." : content.message}</p>
         <div className="rfl-payment-result-summary">
           <div><span>Business</span><strong>{payment.business.name}</strong></div>
-          <div><span>Status</span><strong>{content.label}</strong></div>
+          <div><span>Status</span><strong>{outcome.statusLabel}</strong></div>
           <div><span>Payment for</span><strong>{payment.itemDescription}</strong></div>
           {payment.referenceLabel && <div><span>Unit / space</span><strong>{payment.referenceLabel}</strong></div>}
           {payment.paymentMethod && <div><span>Payment method</span><strong>{payment.paymentMethod === "ACH" ? "Bank account (ACH)" : "Card"}</strong></div>}
-          {statusDate && <div><span>Updated</span><strong><time dateTime={statusDate.toISOString()}>
-            {new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" }).format(statusDate)} Central
+          {payment.createdAt && <div><span>Original transaction date</span><strong><time dateTime={payment.createdAt.toISOString()} title={payment.createdAt.toISOString()}>{formatReportingTimestamp(payment.createdAt, timeZone)}</time></strong></div>}
+          {statusDate && <div><span>{statusDateLabel}</span><strong><time dateTime={statusDate.toISOString()} title={statusDate.toISOString()}>
+            {formatReportingTimestamp(statusDate, timeZone)}
           </time></strong></div>}
         </div>
+        <p>{payment.business.propertyTimeZone == null ? "UTC display compatibility: property timezone is not configured." : "Display timezone: " + timeZone + "."} These are original recorded dates, not refund or dispute-resolution timestamps.</p>
         <div className="rfl-payment-result-summary rfl-payment-result-breakdown">
           {breakdown(payment.lineItemsSnapshot).map((item, index) => (
             <div key={index}><span>{item.label}</span><strong>{money(item.amountCents)}</strong></div>
           ))}
           <div><span>Subtotal</span><strong>{money(payment.subtotalCents)}</strong></div>
           <div><span>Platform service fee</span><strong>{money(payment.platformFeeCents)}</strong></div>
-          <div className="rfl-payment-result-total"><span>{payment.status === PaymentStatus.PAID ? "Total paid" : "Payment amount"}</span><strong>{money(payment.totalChargedCents)}</strong></div>
+          <div className="rfl-payment-result-total"><span>Original payment amount</span><strong>{money(payment.totalChargedCents)}</strong></div>
+          <div><span>Observed customer refunds</span><strong>{outcome.customerRefundCents === null ? "Unknown / unavailable" : money(outcome.customerRefundCents)}</strong></div>
+          {outcome.pendingCustomerRefundCents !== null && outcome.pendingCustomerRefundCents > 0 && <div><span>Refund pending</span><strong>{money(outcome.pendingCustomerRefundCents)}</strong></div>}
         </div>
-        {payment.status === PaymentStatus.PAID && <p className="rfl-payment-result-message">{receiptMessage(payment.smsReceipt?.status)}</p>}
+        {payment.status === PaymentStatus.PAID && outcome.refundState === "UNKNOWN" && !outcome.disputeOutcome && <p className="rfl-payment-result-message">{smsReceiptMessage(result.smsDelivery)}</p>}
         <div className="rfl-payment-result-actions">
           <a className="rfl-primary-button" href={refreshUrl}>Refresh payment status</a>
           <a href={`/${encodeURIComponent(accountCode)}`}>Return to business payment page</a>
