@@ -69,6 +69,7 @@ export function managementBillingHarness({ createdAt = new Date("2026-10-15T12:0
     const importer = name => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
       if (name.startsWith("@/lib/")) return load(`${name.slice(2)}.ts`);
+      if (name.startsWith("@/components/")) return load(`${name.slice(2)}.tsx`);
       if (name.startsWith(".")) {
         const target = path.posix.join(path.posix.dirname(file), name);
         return load(`${target}.tsx`);

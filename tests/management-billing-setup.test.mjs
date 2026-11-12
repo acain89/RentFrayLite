@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { managementBillingHarness } from "./helpers/management-billing-harness.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
-const account = (overrides = {}) => ({ businessName: "Test Property", ownerName: "Test Manager", contactEmail: "property@example.test", managerEmail: "manager@example.test", password: "isolated-passphrase", confirmPassword: "isolated-passphrase", acceptedTerms: true, propertyTimeZone: "America/Chicago", ...overrides });
+const account = (overrides = {}) => ({ businessName: "Test Property", ownerName: "Test Manager", contactEmail: "property@example.test", managerEmail: "manager@example.test", password: "Isolated-passphrase1", confirmPassword: "Isolated-passphrase1", acceptedTerms: true, propertyTimeZone: "America/Chicago", ...overrides });
 const plan = (id = "a", overrides = {}) => ({ id, businessId: "business", isActive: true, name: `Tier ${id}`, baseAmountCents: 100000, dueDay: 1, gracePeriodDays: 5, initialLateFeeCents: 0, dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0, charges: [], ...overrides });
 const rule = (id = "a", overrides = {}) => ({ recurringPlanId: id, dueDay: 1, gracePeriodDays: 5, initialLateFeeCents: 0, dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0, ...overrides });
 const draft = (id = "a", overrides = {}) => ({ recurringPlanId: id, tierName: `Tier ${id}`, dueDay: "1", gracePeriodDays: "5", initialLateFee: "0.00", dailyLateFee: "0.00", dailyLateFeeMaxDays: "0", ...overrides });

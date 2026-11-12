@@ -11,7 +11,7 @@ const configuration = { NODE_ENV: "production", NEXT_PUBLIC_BASE_URL: "https://e
   RFL_EMAIL_FROM: "recovery@example.test" };
 const privateMarkers = [configuration.RFL_EMAIL_API_TOKEN, configuration.RFL_EMAIL_API_URL, configuration.RFL_EMAIL_FROM, "SYNTHETIC_PRIVATE_EXCEPTION", "SYNTHETIC_PRIVATE_PASSWORD"];
 const noPrivate = data => { for (const marker of privateMarkers) assert.ok(!JSON.stringify(data).includes(marker), marker); };
-const newPassword = "a new secure recovery passphrase";
+const newPassword = "A new secure recovery passphrase1";
 async function fixture(env = configuration) {
   const h = await authHarness("isolated", undefined, {}, env), messages = [];
   const email = h.load("lib/passwordResetEmail.ts"), sender = { send: async message => { messages.push(message); return true; } };

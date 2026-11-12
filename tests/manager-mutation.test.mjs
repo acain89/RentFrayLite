@@ -147,7 +147,7 @@ for (const name of ['tiers', 'billing', 'account-code', 'security']) pgTest(name
   const f = await fixture();
   if (name === 'account-code') await postgres.stripeConnection.create({ data: { businessId: f.h.businesses[0].id, stripeAccountId: 'acct_' + f.plan.id } });
   const route = name === 'security' ? 'app/api/manager/security/route.ts' : name === 'account-code' ? 'app/api/setup/account-code/route.ts' : `app/api/setup/recurring/${name}/route.ts`;
-  const body = name === 'tiers' ? { tiers: [{ id: f.plan.id, clientKey: 'rent', name: 'Changed', amountCents: 110000 }] } : name === 'billing' ? billing(f.plan.id) : name === 'account-code' ? { accountCode: 'ZZ-1234' } : { action: 'PASSWORD', currentPassword: 'old-password', newPassword: 'changed-password', confirmPassword: 'changed-password' };
+  const body = name === 'tiers' ? { tiers: [{ id: f.plan.id, clientKey: 'rent', name: 'Changed', amountCents: 110000 }] } : name === 'billing' ? billing(f.plan.id) : name === 'account-code' ? { accountCode: 'ZZ-1234' } : { action: 'PASSWORD', currentPassword: 'old-password', newPassword: 'Changed-password1', confirmPassword: 'Changed-password1' };
   const p = f.pauseBody(route, name === 'security' ? 'PATCH' : name === 'account-code' ? 'POST' : 'PUT', body); await p.entered; await f.reset(); const before = await f.snapshot();
   p.release(); assert.equal((await p.result).status, 401); assert.deepEqual(await f.snapshot(), before);
 });
@@ -222,7 +222,7 @@ test('shared mutation guard also rechecks isolated persisted authority', async (
 
 for (const action of ['PASSWORD', 'EMAIL']) pgTest('security ' + action + ' cannot commit with deleted in-flight session', async () => {
   const f = await fixture();
-  const p = f.pauseBody('app/api/manager/security/route.ts', 'PATCH', action === 'PASSWORD' ? { action, currentPassword: 'old-password', newPassword: 'changed-password', confirmPassword: 'changed-password' } : { action, currentPassword: 'old-password', newEmail: 'changed-' + f.plan.id + '@example.test' });
+  const p = f.pauseBody('app/api/manager/security/route.ts', 'PATCH', action === 'PASSWORD' ? { action, currentPassword: 'old-password', newPassword: 'Changed-password1', confirmPassword: 'Changed-password1' } : { action, currentPassword: 'old-password', newEmail: 'changed-' + f.plan.id + '@example.test' });
   await p.entered; await postgres.session.deleteMany({ where: { managerId: f.h.managers[0].id } });
   const before = await postgres.manager.findUnique({ where: { id: f.h.managers[0].id } });
   p.release(); assert.equal((await p.result).status, 401);

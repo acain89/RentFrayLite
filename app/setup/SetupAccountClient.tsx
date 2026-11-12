@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import ManagementPasswordChecklist from "@/components/ManagementPasswordChecklist";
+import { isNewManagementPassword, MANAGEMENT_PASSWORD_REQUIREMENT, MANAGEMENT_PASSWORD_MIN_LENGTH } from "@/lib/managementPasswordPolicy";
+
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROPERTY_TIME_ZONE_OPTIONS } from "@/lib/managementBillingSetup";
@@ -15,6 +18,7 @@ type SetupResponse = {
 export default function SetupAccountClient() {
   const router = useRouter();
 
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
@@ -27,6 +31,7 @@ export default function SetupAccountClient() {
     const formData = new FormData(event.currentTarget);
 
     setError("");
+    if (!isNewManagementPassword(formData.get("password"))) { setError(MANAGEMENT_PASSWORD_REQUIREMENT); return; }
     setSubmitting(true);
 
     try {
@@ -167,12 +172,16 @@ export default function SetupAccountClient() {
               <input
                 id="password"
                 name="password"
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                aria-describedby="registration-password-rules"
                 type={showPasswords ? "text" : "password"}
                 autoComplete="new-password"
-                minLength={12}
+                minLength={MANAGEMENT_PASSWORD_MIN_LENGTH}
                 maxLength={72}
                 required
               />
+              <ManagementPasswordChecklist password={password} id="registration-password-rules" />
             </div>
 
             <div className="rfl-field">
@@ -184,7 +193,7 @@ export default function SetupAccountClient() {
                 name="confirmPassword"
                 type={showPasswords ? "text" : "password"}
                 autoComplete="new-password"
-                minLength={12}
+                minLength={MANAGEMENT_PASSWORD_MIN_LENGTH}
                 maxLength={72}
                 required
               />

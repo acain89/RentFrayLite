@@ -37,7 +37,7 @@ for(const backend of [...(postgres?['postgres']:[]),'isolated']){
   const response=await h.change(action==='EMAIL'?{action,newEmail:'changed-'+h.managers[0].id+'@example.test'}:{});assert.equal(response.status,200);assert.equal((await response.json()).requiresLogin,true);assert.equal(h.token(),'');
   for(const t of [a,b]){h.use(t);assert.equal(await h.session.getCurrentSession(),null);}
   h.use(other);assert.ok(await h.session.getCurrentSession());h.use(admin);assert.ok(await h.session.getCurrentSession());
-  if(action==='PASSWORD'){const m=await h.db.manager.findUnique({where:{id:h.managers[0].id}});assert.equal(await bcrypt.compare('new-password',m.passwordHash),true);assert.equal(await bcrypt.compare('old-password',m.passwordHash),false);}
+  if(action==='PASSWORD'){const m=await h.db.manager.findUnique({where:{id:h.managers[0].id}});assert.equal(await bcrypt.compare('New-password1',m.passwordHash),true);assert.equal(await bcrypt.compare('old-password',m.passwordHash),false);}
   const fresh=await h.issue();assert.notEqual(fresh,a);assert.ok(await h.session.getCurrentSession());
  });
  for(const kind of ['password','email'])test(`${label}: admin ${kind} reset revokes only target manager`,async()=>{
@@ -61,7 +61,7 @@ for(const backend of [...(postgres?['postgres']:[]),'isolated']){
   assert.equal(response.status,200);assert.notEqual(h.token(),'attacker-admin-token');assert.equal((await h.session.getCurrentSession()).type,'ADMIN');
  });
  if(backend==='postgres')test(`${label}: real principal row lock prevents issuance across a reset commit`,async()=>{
-  const h=await authHarness(backend);const old=h.managers[0];const token=await h.issue();const newHash=await bcrypt.hash('new-password',12);
+  const h=await authHarness(backend);const old=h.managers[0];const token=await h.issue();const newHash=await bcrypt.hash('New-password1',12);
   let entered,release;const arrived=new Promise(r=>entered=r),barrier=new Promise(r=>release=r);
   const reset=h.db.$transaction(async tx=>{await tx.manager.update({where:{id:old.id},data:{passwordHash:newHash}});await tx.session.deleteMany({where:{managerId:old.id}});entered();await barrier;},{timeout:10000});
   await arrived;const rejected=assert.rejects(()=>h.session.createManagerSession({managerId:old.id,businessId:old.businessId,passwordHash:old.passwordHash,email:old.email}),/authentication changed/);
@@ -84,9 +84,9 @@ for(const backend of [...(postgres?['postgres']:[]),'isolated']){
   const h=await authHarness(backend);await h.issue();const passwords=h.load('lib/password.ts');const hash=passwords.hashPassword;
   let entered,release;const arrived=new Promise(r=>entered=r),barrier=new Promise(r=>release=r);
   passwords.hashPassword=async value=>{entered();await barrier;return hash(value);};
-  const stale=h.change({newPassword:'stale-password',confirmPassword:'stale-password'});
+  const stale=h.change({newPassword:'Stale-password1',confirmPassword:'Stale-password1'});
   await arrived;await h.issue('ADMIN');assert.equal((await h.reset()).status,200);release();assert.equal((await stale).status,401);
-  const m=await h.db.manager.findUnique({where:{id:h.managers[0].id}});assert.equal(await bcrypt.compare('new-password',m.passwordHash),true);assert.equal(await bcrypt.compare('stale-password',m.passwordHash),false);
+  const m=await h.db.manager.findUnique({where:{id:h.managers[0].id}});assert.equal(await bcrypt.compare('New-password1',m.passwordHash),true);assert.equal(await bcrypt.compare('Stale-password1',m.passwordHash),false);
  });
  if(backend==='postgres')for(const failure of ['manager.update','session.deleteMany','auditLog.create'])for(const actor of ['manager','admin'])test(`${label}: real transaction rolls back ${actor} ${failure}`,async()=>{
   const h=await authHarness(backend);const a=await h.issue(),b=await h.issue(),other=await h.issue('MANAGER',1),admin=await h.issue('ADMIN');h.use(actor==='admin'?admin:a);

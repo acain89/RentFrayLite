@@ -1,6 +1,9 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import ManagementPasswordChecklist from "@/components/ManagementPasswordChecklist";
+import { isNewManagementPassword, MANAGEMENT_PASSWORD_REQUIREMENT, MANAGEMENT_PASSWORD_MIN_LENGTH } from "@/lib/managementPasswordPolicy";
+
 import { useRouter } from "next/navigation";
 import type { AdminDashboardData } from "@/lib/adminDashboard";
 import { SMS_DELIVERY_STATES, type SmsDeliveryMetric } from "@/lib/smsDeliveryReporting";
@@ -196,6 +199,8 @@ function chooseBusiness(business: BusinessSearchResult): void {
     if (!selected) return;
 
     setCredentialMessage("");
+
+    if (newPassword && !isNewManagementPassword(newPassword)) { setCredentialMessage(MANAGEMENT_PASSWORD_REQUIREMENT); return; }
 
     if (newPassword && newPassword !== confirmNewPassword) {
       setCredentialMessage("The new passwords do not match.");
@@ -632,9 +637,10 @@ async function deleteBusiness(): Promise<void> {
                   </label>
                   <input
                     id="admin-manager-password"
+                    aria-describedby="admin-password-rules"
                     type={showAdminPasswords ? "text" : "password"}
-                    minLength={6}
-                    maxLength={128}
+                    minLength={MANAGEMENT_PASSWORD_MIN_LENGTH}
+                    maxLength={72}
                     value={newPassword}
                     onChange={(event) => {
                       setNewPassword(event.target.value);
@@ -643,14 +649,16 @@ async function deleteBusiness(): Promise<void> {
                     placeholder="Leave blank to keep current password"
                   />
 
+                  <ManagementPasswordChecklist password={newPassword} id="admin-password-rules" />
+
                   <label htmlFor="admin-manager-confirm-password">
                     Confirm New Password
                   </label>
                   <input
                     id="admin-manager-confirm-password"
                     type={showAdminPasswords ? "text" : "password"}
-                    minLength={6}
-                    maxLength={128}
+                    minLength={MANAGEMENT_PASSWORD_MIN_LENGTH}
+                    maxLength={72}
                     value={confirmNewPassword}
                     onChange={(event) => {
                       setConfirmNewPassword(event.target.value);

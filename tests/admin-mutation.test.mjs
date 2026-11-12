@@ -34,7 +34,7 @@ test('valid admin credential reset revokes only target sessions and recovery tok
   for (const b of h.businesses) await h.db.verificationToken.create({ data: { businessId: b.id, type: 'PASSWORD_RESET' } });
   const other = await h.db.manager.findUnique({ where: { id: h.managers[1].id } });
   assert.equal((await h.reset()).status, 200);
-  assert.equal(await bcrypt.compare('new-password', (await h.db.manager.findUnique({ where: { id: h.managers[0].id } })).passwordHash), true);
+  assert.equal(await bcrypt.compare('New-password1', (await h.db.manager.findUnique({ where: { id: h.managers[0].id } })).passwordHash), true);
   assert.deepEqual(await h.db.manager.findUnique({ where: { id: h.managers[1].id } }), other);
   assert.equal((await h.db.session.findMany({ where: { managerId: h.managers[0].id } })).length, 0);
   assert.equal((await h.db.session.findMany({ where: { managerId: h.managers[1].id } })).length, 1);

@@ -53,7 +53,7 @@ export async function authHarness(backend='isolated', sharedDb, services={}, env
  };
  Object.assign(mocks,services);
  const cache=new Map();function load(p){if(cache.has(p))return cache.get(p);const file=path.join(root,p);if(!compiled.has(p))compiled.set(p,ts.transpileModule(readFileSync(file,'utf8'),{fileName:file,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText);
-  const mod={exports:{}};vm.runInThisContext('(function(require,module,exports,process){'+compiled.get(p)+'})',{filename:file})(n=>{if(Object.hasOwn(mocks,n))return mocks[n];if(n.startsWith('@/lib/'))return load(n.slice(2)+'.ts');throw Error('Unexpected import '+n);},mod,mod.exports,{env:{NEXT_PUBLIC_BASE_URL:'https://example.test',...environment}});cache.set(p,mod.exports);return mod.exports;
+  const mod={exports:{}};vm.runInThisContext('(function(require,module,exports,process){'+compiled.get(p)+'})',{filename:file})(n=>{if(Object.hasOwn(mocks,n))return mocks[n];if(n.startsWith('@/lib/'))return load(n.slice(2)+'.ts');if(n.startsWith('@/components/'))return load(n.slice(2)+'.tsx');throw Error('Unexpected import '+n);},mod,mod.exports,{env:{NEXT_PUBLIC_BASE_URL:'https://example.test',...environment}});cache.set(p,mod.exports);return mod.exports;
  }
  const session=load('lib/session.ts'),auth=load('lib/auth.ts');
  const token=()=>jar.get('rfl_session');const use=t=>jar.set('rfl_session',t);const request=body=>{
@@ -68,8 +68,8 @@ export async function authHarness(backend='isolated', sharedDb, services={}, env
   }};
  };
  async function issue(type='MANAGER',index=0){if(type==='MANAGER'){const m=await db.manager.findUnique({where:{id:managers[index].id}});await session.createManagerSession({managerId:m.id,businessId:m.businessId,passwordHash:m.passwordHash,email:m.email});}else{const a=await db.adminAccess.findUnique({where:{id:admins[index].id}});await session.createAdminSession(a.id,a.codeHash);}return token();}
- const change=body=>load('app/api/manager/security/route.ts').PATCH(request({action:'PASSWORD',currentPassword:'old-password',newPassword:'new-password',confirmPassword:'new-password',...body}));
- const reset=(index=0,body={})=>load('app/api/admin/businesses/[businessId]/credentials/route.ts').PATCH(request({password:'new-password',confirmPassword:'new-password',...body}),{params:Promise.resolve({businessId:businesses[index].id})});
+ const change=body=>load('app/api/manager/security/route.ts').PATCH(request({action:'PASSWORD',currentPassword:'old-password',newPassword:'New-password1',confirmPassword:'New-password1',...body}));
+ const reset=(index=0,body={})=>load('app/api/admin/businesses/[businessId]/credentials/route.ts').PATCH(request({password:'New-password1',confirmPassword:'New-password1',...body}),{params:Promise.resolve({businessId:businesses[index].id})});
  return {mocks,db,jar,cookieOptions,businesses,managers,admins,session,auth,load,token,use,issue,change,reset,readonly:value=>{readonly=value;},request};
 }
 export {postgres,initialHash};

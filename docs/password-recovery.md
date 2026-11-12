@@ -53,8 +53,10 @@ Recovery and login budgets are independent; no untrusted source-IP headers are
 used as identity. Infrastructure-level flood protection remains a deployment
 requirement. Security audit retention should follow the existing retention plan.
 
-All newly chosen management passwords require 12 characters excluding outer
-whitespace, at most 72 UTF-8 bytes, and no NUL or malformed Unicode. Existing
+All newly chosen management passwords require 8 characters excluding outer
+whitespace, an uppercase ASCII letter, a lowercase ASCII letter, and an ASCII digit.
+Special characters are optional. New passwords must fit within 72 UTF-8 bytes
+and contain no NUL or malformed Unicode. Existing
 hashes are never rewritten automatically. Existing 6-to-128-character login
 credentials remain accepted, subject to NUL/Unicode validation. Legacy bcrypt
 passwords longer than 72 bytes retain their historical truncation behavior until

@@ -60,7 +60,7 @@ export function validatePropertyTimeZone(value: unknown): string {
 export function getPropertyLocalDate(instant: Date, timeZone: string): CalendarDate {
   requireInstant(instant);
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: validatePropertyTimeZone(timeZone), calendar: "iso8601", numberingSystem: "latn",
+    timeZone: validatePropertyTimeZone(timeZone), calendar: "gregory", numberingSystem: "latn",
     year: "numeric", month: "2-digit", day: "2-digit", era: "short",
   }).formatToParts(instant);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(entry => entry.type === type)?.value;

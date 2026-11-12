@@ -1,6 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import ManagementPasswordChecklist from "@/components/ManagementPasswordChecklist";
+import { isNewManagementPassword, MANAGEMENT_PASSWORD_REQUIREMENT, MANAGEMENT_PASSWORD_MIN_LENGTH } from "@/lib/managementPasswordPolicy";
+
 
 type SecurityResponse = {
   success?: boolean;
@@ -79,6 +82,8 @@ export default function SecuritySettingsClient({
   ): Promise<void> {
     event.preventDefault();
     setPasswordMessage("");
+
+    if (!isNewManagementPassword(newPassword)) { setPasswordMessage(MANAGEMENT_PASSWORD_REQUIREMENT); return; }
 
     if (newPassword !== confirmPassword) {
       setPasswordMessage("The new passwords do not match.");
@@ -192,7 +197,7 @@ export default function SecuritySettingsClient({
       <section className="rfl-security-card">
         <div className="rfl-security-heading">
           <h2>Password</h2>
-          <p>New passwords must contain at least 12 characters and at most 72 UTF-8 bytes.</p>
+          <p>{MANAGEMENT_PASSWORD_REQUIREMENT}</p>
         </div>
 
         <form className="rfl-security-form" onSubmit={updatePassword}>
@@ -215,16 +220,19 @@ export default function SecuritySettingsClient({
           <label htmlFor="security-password-new">New password</label>
           <input
             id="security-password-new"
+            aria-describedby="security-password-rules"
             type={showNewPasswords ? "text" : "password"}
             value={newPassword}
             onChange={(event) => {
               setNewPassword(event.target.value);
               setPasswordMessage("");
             }}
-            minLength={12}
+            minLength={MANAGEMENT_PASSWORD_MIN_LENGTH}
             maxLength={72}
             required
           />
+
+          <ManagementPasswordChecklist password={newPassword} id="security-password-rules" />
 
           <label htmlFor="security-password-confirm">
             Confirm new password
@@ -237,7 +245,7 @@ export default function SecuritySettingsClient({
               setConfirmPassword(event.target.value);
               setPasswordMessage("");
             }}
-            minLength={12}
+            minLength={MANAGEMENT_PASSWORD_MIN_LENGTH}
             maxLength={72}
             required
           />
