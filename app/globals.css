@@ -4743,3 +4743,18 @@ input:focus-visible {
 .rfl-registration-card .rfl-field select {
   width: 100%;
 }
+
+.rfl-registration-card .rfl-registration-timezone {
+  background: #edf5fc;
+  border-radius: 14px;
+  padding: 16px;
+}
+.rfl-registration-card .rfl-registration-timezone .rfl-field-help {
+  color: var(--rfl-text-soft);
+  font-weight: 600;
+}
+.rfl-registration-card #registration-sms-disclosure {
+  color: var(--rfl-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}

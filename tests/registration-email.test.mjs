@@ -48,7 +48,7 @@ test("registration presents exactly one Email field and retains calendar/passwor
   const h=managementBillingHarness(),html=renderToStaticMarkup(h.load("app/setup/SetupAccountClient.tsx").default());
   assert.equal((html.match(/type="email"/g)??[]).length,1);assert.match(html,/<label for="email">Email<\/label>/);
   assert.match(html,/name="email"/);assert.doesNotMatch(html,/name="contactEmail"|name="managerEmail"|Business email|Manager email/);
-  assert.match(html,/registration-password-rules/);assert.match(html,/At least 8 characters/);assert.match(html,/America\/Chicago/);
+  assert.match(html,/registration-password-rules/);assert.match(html,/8 characters minimum/);assert.match(html,/America\/Chicago/);
 });
 
 const configuration={NODE_ENV:"production",NEXT_PUBLIC_BASE_URL:"https://example.test",STRIPE_SECRET_KEY:"sk_test_registration_fixture",RFL_EMAIL_API_URL:"https://mail.example.test/send",RFL_EMAIL_API_TOKEN:"mock-gateway-key",RFL_EMAIL_FROM:"rfl@example.test"};

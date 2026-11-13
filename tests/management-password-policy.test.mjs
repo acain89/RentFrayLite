@@ -104,7 +104,12 @@ test("registration checklist updates live and client/backend agree without exter
     await password.fill("abcdefgh");await expect(rules.locator('[data-met="true"]')).toHaveCount(2);
     await password.fill("Abcdefgh");await expect(rules.locator('[data-met="true"]')).toHaveCount(3);
     await password.fill("Abcdef12");await expect(rules.locator('[data-met="true"]')).toHaveCount(4);
-    await expect(rules).toContainText("Special characters are optional");
+    await expect(rules).not.toContainText("Special characters are optional");
+    await password.fill("Aa1x"+"\u{1F600}".repeat(18));
+    await expect(rules.getByRole("alert")).toHaveText("Password is too long or contains unsupported characters.");
+    await password.fill("Abcdef12");
+    await expect(rules.getByRole("alert")).toHaveCount(0);
+    assert.deepEqual(await rules.locator("li").evaluateAll(items=>items.map(item=>item.textContent.trim().slice(2))), ["8 characters minimum", "One uppercase letter", "One lowercase letter", "One number"]);
     await page.getByLabel("Business Name",{exact:true}).fill("Test Property");
     await page.getByLabel("Your name",{exact:true}).fill("Test Manager");
     await expect(page.locator('input[type="email"]')).toHaveCount(1);
