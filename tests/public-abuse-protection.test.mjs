@@ -101,20 +101,20 @@ for (const backend of ['isolated', ...(postgres ? ['postgres'] : [])]) {
 }
 test('signup permits valid customers and throttles normalized email before password hashing or account writes',async()=>{
   const h=managementBillingHarness(),route=h.load(paths[0]);
-  const body={businessName:'Test Property',ownerName:'Test Manager',contactEmail:'property@example.test',managerEmail:'manager@example.test',password:'Isolated-passphrase1',confirmPassword:'Isolated-passphrase1',acceptedTerms:true,propertyTimeZone:'America/Chicago'};
+  const body={businessName:'Test Property',ownerName:'Test Manager',email:'manager@example.test',password:'Isolated-passphrase1',confirmPassword:'Isolated-passphrase1',acceptedTerms:true,propertyTimeZone:'America/Chicago'};
   for(let i=0;i<3;i++)assert.equal((await route.POST(json(body))).status,201);
-  const writes=h.writes.length;const response=await route.POST(json({...body,managerEmail:' MANAGER@EXAMPLE.TEST '}));assert.equal(response.status,429);assert.equal(h.writes.length,writes);
-  assert.equal((await route.POST(json({...body,managerEmail:'other@example.test'}))).status,201);
+  const writes=h.writes.length;const response=await route.POST(json({...body,email:' MANAGER@EXAMPLE.TEST '}));assert.equal(response.status,429);assert.equal(h.writes.length,writes);
+  assert.equal((await route.POST(json({...body,email:'other@example.test'}))).status,201);
 });
 if(postgres)test('postgres: real signup and durable normalized-email throttling',async()=>{
   const h=await harness('ACH','postgres');await h.db.publicRequestBudget.deleteMany({where:{}});
   h.mocks.zod=zod;h.mocks.bcryptjs={default:bcrypt,...bcrypt};
   const route=h.load(paths[0]),email=randomUUID()+'@example.test';
-  const body={businessName:'Disposable signup',ownerName:'Test Manager',contactEmail:email,managerEmail:email,password:'Isolated-passphrase1',confirmPassword:'Isolated-passphrase1',acceptedTerms:true,propertyTimeZone:'America/Chicago'};
+  const body={businessName:'Disposable signup',ownerName:'Test Manager',email,password:'Isolated-passphrase1',confirmPassword:'Isolated-passphrase1',acceptedTerms:true,propertyTimeZone:'America/Chicago'};
   assert.equal((await route.POST(json(body))).status,201);
   const manager=await h.db.manager.findUnique({where:{email}});assert.ok(manager);
   for(let i=0;i<2;i++){const response=await route.POST(json(body));assert.equal(response.status,409);assert.doesNotMatch(await response.text(),/already exists|registered|manager account/i);}
-  const response=await route.POST(json({...body,managerEmail:email.toUpperCase()}));assert.equal(response.status,429);
+  const response=await route.POST(json({...body,email:email.toUpperCase()}));assert.equal(response.status,429);
   assert.equal(await h.db.manager.count({where:{email}}),1);assert.equal((await h.payments()).length,0);
 });
 test('body reader bounds stalled streams and rejects invalid UTF-8',async()=>{

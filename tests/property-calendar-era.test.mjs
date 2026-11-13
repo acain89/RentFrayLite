@@ -44,8 +44,7 @@ for (const era of ["CE", null]) {
     try {
       const h = managementBillingHarness();
       const response = await h.load("app/api/setup/route.ts").POST(h.request({
-        businessName: "Test Property", ownerName: "Test Manager", contactEmail: "property@example.test",
-        managerEmail: "manager@example.test", password: "Isolated-passphrase1", confirmPassword: "Isolated-passphrase1",
+        businessName: "Test Property", ownerName: "Test Manager", email: "manager@example.test", password: "Isolated-passphrase1", confirmPassword: "Isolated-passphrase1",
         acceptedTerms: true, propertyTimeZone: "America/Chicago",
       }));
       assert.equal(response.status, 201);

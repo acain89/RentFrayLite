@@ -8,7 +8,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROPERTY_TIME_ZONE_OPTIONS } from "@/lib/managementBillingSetup";
 
-import { MANAGEMENT_SMS_DISCLOSURE } from "@/lib/smsConsent";
+import { formatRegistrationPhone, normalizeRegistrationPhone, REGISTRATION_PHONE_INVALID, REGISTRATION_SMS_PHONE_REQUIRED } from "@/lib/registrationPhone";
 
 type SetupResponse = {
   redirectTo?: string;
@@ -18,6 +18,9 @@ type SetupResponse = {
 export default function SetupAccountClient() {
   const router = useRouter();
 
+  const [phone, setPhone] = useState("");
+  const [smsConsent, setSmsConsent] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -31,6 +34,10 @@ export default function SetupAccountClient() {
     const formData = new FormData(event.currentTarget);
 
     setError("");
+    setPhoneError("");
+    const contactPhone = normalizeRegistrationPhone(formData.get("contactPhone"));
+    if (smsConsent && !contactPhone) { setPhoneError(REGISTRATION_SMS_PHONE_REQUIRED); return; }
+    if (phone.trim() && !contactPhone) { setPhoneError(REGISTRATION_PHONE_INVALID); return; }
     if (!isNewManagementPassword(formData.get("password"))) { setError(MANAGEMENT_PASSWORD_REQUIREMENT); return; }
     setSubmitting(true);
 
@@ -43,11 +50,10 @@ export default function SetupAccountClient() {
         body: JSON.stringify({
           businessName: formData.get("businessName"),
           ownerName: formData.get("ownerName"),
-          contactEmail: formData.get("contactEmail"),
-          contactPhone: formData.get("contactPhone"),
-          smsConsent: formData.get("smsConsent") === "yes",
+          email: formData.get("email"),
+          contactPhone: contactPhone ?? undefined,
+          smsConsent,
           propertyTimeZone: formData.get("propertyTimeZone"),
-          managerEmail: formData.get("managerEmail"),
           password: formData.get("password"),
           confirmPassword: formData.get("confirmPassword"),
           acceptedTerms: formData.get("acceptedTerms") === "yes",
@@ -72,22 +78,19 @@ export default function SetupAccountClient() {
 
   return (
     <main className="rfl-setup-page">
-      <section className="rfl-setup-card">
+      <section className="rfl-setup-card rfl-registration-card">
         <Link className="rfl-auth-home-link" href="/">
           RentFrayLite
         </Link>
 
         <header className="rfl-setup-header">
           <p className="rfl-eyebrow">Step 1 of 4</p>
-          <h1>Create your business account</h1>
-          <p>
-            Set up your property and its first standard billing cycle.
-          </p>
+          <h1>Create your account</h1>
         </header>
 
         <form className="rfl-setup-form" onSubmit={handleSubmit}>
           <div className="rfl-field">
-            <label htmlFor="businessName">Business name</label>
+            <label htmlFor="businessName">Business Name</label>
             <input
               id="businessName"
               name="businessName"
@@ -112,33 +115,52 @@ export default function SetupAccountClient() {
 
           <div className="rfl-setup-grid">
             <div className="rfl-field">
-              <label htmlFor="contactEmail">Business email</label>
+              <label htmlFor="email">Email</label>
               <input
-                id="contactEmail"
-                name="contactEmail"
+                id="email"
+                name="email"
                 type="email"
-                autoComplete="email"
+                autoComplete="username"
                 required
               />
             </div>
 
             <div className="rfl-field">
               <label htmlFor="contactPhone">
-                Business phone
+                Cell Phone Number
                 <span> Optional</span>
               </label>
               <input
                 id="contactPhone"
                 name="contactPhone"
                 type="tel"
-                autoComplete="tel"
+                autoComplete="tel-national"
+                inputMode="tel"
+                placeholder="XXX-XXX-XXXX"
+                value={phone}
+                onChange={event => { setPhone(formatRegistrationPhone(event.target.value)); setPhoneError(""); }}
+                aria-invalid={!!phoneError}
+                aria-describedby={phoneError ? "registration-phone-error" : undefined}
                 maxLength={30}
               />
+              {phoneError ? <p id="registration-phone-error" className="rfl-error" role="alert">{phoneError}</p> : null}
             </div>
           </div>
 
-          <label><input type="checkbox" name="smsConsent" value="yes" /> {MANAGEMENT_SMS_DISCLOSURE}</label>
-          <p>Payment SMS Notifications default to ON. No texts are sent without your consent and a valid number.</p>
+          <div className="rfl-field">
+            <label className="rfl-legal-acceptance">
+              <input type="checkbox" name="smsConsent" value="yes" checked={smsConsent}
+                onChange={event => { setSmsConsent(event.target.checked); setPhoneError(""); }}
+                aria-describedby="registration-sms-disclosure" />
+              <span>I agree to payment-status texts (optional).</span>
+            </label>
+            <p id="registration-sms-disclosure" className="rfl-field-help">
+              I am authorized to use this number. Automated RentFrayLite texts for this property;
+              frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP
+              for help. Consent is not required to sign up or pay. <Link href="/terms" target="_blank">Terms</Link>{" "}
+              and <Link href="/privacy" target="_blank">Privacy</Link>.
+            </p>
+          </div>
 
           <div className="rfl-field">
             <label htmlFor="propertyTimeZone">Property timezone</label>
@@ -147,23 +169,7 @@ export default function SetupAccountClient() {
                 <option key={option.value} value={option.value}>{option.label} ({option.value})</option>
               ))}
             </select>
-            <p className="rfl-field-help">Use the timezone where the property is located. The first standard billing cycle begins on the next 1st after account creation.</p>
-          </div>
-
-          <div className="rfl-setup-section">
-            <h2>Manager login</h2>
-            <p>This will be the login used to manage the account.</p>
-          </div>
-
-          <div className="rfl-field">
-            <label htmlFor="managerEmail">Manager email</label>
-            <input
-              id="managerEmail"
-              name="managerEmail"
-              type="email"
-              autoComplete="username"
-              required
-            />
+            <p className="rfl-field-help">Use the timezone where the property is located.</p>
           </div>
 
           <div className="rfl-setup-grid">

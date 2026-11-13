@@ -4699,3 +4699,47 @@ input:focus-visible {
   outline-offset: 3px;
   border-radius: 4px;
 }
+
+/* Step 1 only: compact spacing and natural-height fields/checklists/errors. */
+.rfl-registration-card {
+  padding: clamp(20px, 5vw, 32px);
+}
+.rfl-registration-card .rfl-setup-header {
+  margin: 16px 0 20px;
+}
+.rfl-registration-card .rfl-setup-form {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.rfl-registration-card .rfl-setup-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.rfl-registration-card .rfl-setup-grid > .rfl-field {
+  grid-template-rows: auto;
+  min-width: 0;
+}
+.rfl-registration-card .rfl-setup-grid > .rfl-field > label {
+  height: auto;
+}
+.rfl-registration-card .rfl-field-help {
+  margin: 0;
+}
+@media (min-width: 640px) {
+  .rfl-registration-card .rfl-setup-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.rfl-registration-card .rfl-field {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.rfl-registration-card .rfl-field input,
+.rfl-registration-card .rfl-field select {
+  min-width: 0;
+  max-width: 100%;
+}
+.rfl-registration-card .rfl-field select {
+  width: 100%;
+}

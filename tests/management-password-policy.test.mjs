@@ -14,7 +14,7 @@ const browser = {};
 vm.runInNewContext(frontendBuild.outputFiles[0].text, browser);
 const policy = browser.passwordPolicy;
 const schema = managementBillingHarness().load("lib/validators.ts").setupAccountSchema;
-const account = password => ({businessName:"Test Property",ownerName:"Test Manager",contactEmail:"property@example.test",managerEmail:"manager@example.test",password,confirmPassword:password,acceptedTerms:true,propertyTimeZone:"America/Chicago"});
+const account = password => ({businessName:"Test Property",ownerName:"Test Manager",email:"manager@example.test",password,confirmPassword:password,acceptedTerms:true,propertyTimeZone:"America/Chicago"});
 const vectors = [
   ["eight ASCII characters", "Abcdef12", true],
   ["special characters optional", "Abcde1!x", true],
@@ -92,7 +92,7 @@ test("registration checklist updates live and client/backend agree without exter
       const request=route.request(),url=new URL(request.url());
       if(url.origin!=="https://example.test"){external.push(url.origin);return route.abort();}
       if(url.pathname==="/api/setup"){
-        apiCalls++;const response=await f.load("app/api/setup/route.ts").POST(f.request(JSON.parse(request.postData())));
+        apiCalls++;const submitted=JSON.parse(request.postData());assert.equal(submitted.email,"manager@example.test");assert.equal(Object.hasOwn(submitted,"contactEmail"),false);assert.equal(Object.hasOwn(submitted,"managerEmail"),false);const response=await f.load("app/api/setup/route.ts").POST(f.request(submitted));
         return route.fulfill({status:response.status,contentType:"application/json",body:await response.text()});
       }
       return route.fulfill({contentType:"text/html",body:'<div id="root"></div><script>'+result.outputFiles[0].text.replaceAll("</script","<\\/script")+'</script>'});
@@ -105,10 +105,10 @@ test("registration checklist updates live and client/backend agree without exter
     await password.fill("Abcdefgh");await expect(rules.locator('[data-met="true"]')).toHaveCount(3);
     await password.fill("Abcdef12");await expect(rules.locator('[data-met="true"]')).toHaveCount(4);
     await expect(rules).toContainText("Special characters are optional");
-    await page.getByLabel("Business name",{exact:true}).fill("Test Property");
+    await page.getByLabel("Business Name",{exact:true}).fill("Test Property");
     await page.getByLabel("Your name",{exact:true}).fill("Test Manager");
-    await page.getByLabel("Business email",{exact:true}).fill("property@example.test");
-    await page.getByLabel("Manager email",{exact:true}).fill("manager@example.test");
+    await expect(page.locator('input[type="email"]')).toHaveCount(1);
+    await page.getByLabel("Email",{exact:true}).fill("manager@example.test");
     await page.locator('select[name="propertyTimeZone"]').selectOption("America/Chicago");
     await page.locator('input[name="acceptedTerms"]').check();
     await password.fill("abcdefgh");await page.getByLabel("Confirm password",{exact:true}).fill("abcdefgh");
@@ -118,7 +118,7 @@ test("registration checklist updates live and client/backend agree without exter
     await password.fill("Abcdef12");await page.getByLabel("Confirm password",{exact:true}).fill("Abcdef12");
     await page.getByRole("button",{name:"Continue",exact:true}).click();
     await expect.poll(()=>page.evaluate(()=>window.__redirect)).toBe("/setup/recurring/tiers");
-    assert.equal(apiCalls,1);assert.equal(f.state().businesses.length,1);assert.equal(f.state().managers.length,1);assert.deepEqual(external,[]);
+    assert.equal(apiCalls,1);assert.equal(f.state().businesses.length,1);assert.equal(f.state().managers.length,1);assert.equal(f.state().businesses[0].contactEmail,"manager@example.test");assert.equal(f.state().managers[0].email,"manager@example.test");assert.deepEqual(external,[]);
     await page.getByRole("checkbox",{name:"Show passwords",exact:true}).check();await expect(password).toHaveAttribute("type","text");
   } finally {await instance.close();}
 });
