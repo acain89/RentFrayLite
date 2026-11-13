@@ -1,3 +1,4 @@
+import { boundedRawBody } from "@/lib/boundedRawBody";
 import { logOperationalError } from "@/lib/operationalLogging";
 import { requireCredentialOrigin } from "@/lib/credentialRequest";
 import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
@@ -16,7 +17,12 @@ function getApplicationOrigin(request: Request): string {
 
 export async function POST(request: Request) {
   try { requireCredentialOrigin(request); } catch { return NextResponse.json({ error: "Invalid request origin." }, { status: 403 }); }
-  if (request.body) return NextResponse.json({ error: "This action does not accept a request body." }, { status: 400 });
+  // Node/Next.js can expose an empty POST as a non-null stream.
+  // Verify zero bytes with the existing bounded reader, not stream presence.
+  if (request.body) {
+    try { await boundedRawBody(request, 0); }
+    catch { return NextResponse.json({ error: "This action does not accept a request body." }, { status: 400 }); }
+  }
 
   const session = await getCurrentSession();
 
