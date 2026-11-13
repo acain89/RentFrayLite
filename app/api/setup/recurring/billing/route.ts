@@ -10,7 +10,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentSession } from "@/lib/session";
 import {
-  validateRecurringPaymentConfiguration,
+  validateRecurringPaymentConfiguration, isValidDailyLateFeeDays, DAILY_LATE_FEE_DAYS_ERROR,
 } from "@/lib/recurringValidation";
 
 const billingRuleSchema = z
@@ -28,7 +28,7 @@ const billingRuleSchema = z
       .int()
       .min(0)
       .max(10_000_000),
-    dailyLateFeeMaxDays: z.number().int().min(0).max(365),
+    dailyLateFeeMaxDays: z.number().int().refine(isValidDailyLateFeeDays, DAILY_LATE_FEE_DAYS_ERROR),
   })
   .superRefine((rule, context) => {
     if (

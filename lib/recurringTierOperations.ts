@@ -6,14 +6,14 @@ import { getCurrentSession } from "@/lib/session";
 import { requireCredentialOrigin } from "@/lib/credentialRequest";
 import { withManagerMutation, ManagerMutationUnauthorized } from "@/lib/managerMutation";
 import { MAX_PAYMENT_AMOUNT_CENTS } from "@/lib/platformFees";
-import { validateRecurringPaymentConfiguration } from "@/lib/recurringValidation";
+import { validateRecurringPaymentConfiguration, isValidDailyLateFeeDays, DAILY_LATE_FEE_DAYS_ERROR } from "@/lib/recurringValidation";
 import { isValidBillingCycle } from "@/lib/billingCalendar";
 import { ConfigurationError, configurationFingerprint, legacyConfigurationVersion, CONFIGURATION_PAGE_SIZE, CHARGES_PER_TIER, readConfigurationJson, type ConfigurationPlan } from "@/lib/recurringConfiguration";
 
 const id = z.string().min(1).max(100), version = z.string().min(1).max(100);
 const cents = z.number().int().min(1).max(MAX_PAYMENT_AMOUNT_CENTS);
 const ruleSchema = z.object({ dueDay: z.literal(1).default(1), gracePeriodDays: z.union([z.literal(3), z.literal(4), z.literal(5)]),
-  initialLateFeeCents: z.number().int().min(0).max(10_000_000), dailyLateFeeCents: z.number().int().min(0).max(10_000_000), dailyLateFeeMaxDays: z.number().int().min(0).max(365) })
+  initialLateFeeCents: z.number().int().min(0).max(10_000_000), dailyLateFeeCents: z.number().int().min(0).max(10_000_000), dailyLateFeeMaxDays: z.number().int().refine(isValidDailyLateFeeDays, DAILY_LATE_FEE_DAYS_ERROR) })
   .refine(r => r.dailyLateFeeCents > 0 ? r.dailyLateFeeMaxDays > 0 : r.dailyLateFeeMaxDays === 0, "Choose valid daily late-fee days.");
 const chargeSchema = z.object({ id: id.optional(), label: z.string().trim().min(1).max(80), amountCents: cents,
   effectiveBillingCycle: z.string().nullable().optional(), endsAfterBillingCycle: z.string().nullable().optional() });

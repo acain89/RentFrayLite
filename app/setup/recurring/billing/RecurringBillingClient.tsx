@@ -1,4 +1,5 @@
 "use client";
+import { MAX_DAILY_LATE_FEE_DAYS, DAILY_LATE_FEE_DAYS_ERROR, parseDailyLateFeeDays } from "@/lib/recurringValidation";
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -40,7 +41,7 @@ type EditableField =
   | "dailyLateFeeMaxDays";
 
 function moneyToCents(value: string): number | null {
-  const normalized = value.trim();
+  const normalized = value.trim() || "0";
 
   if (!/^\d+(\.\d{0,2})?$/.test(normalized)) {
     return null;
@@ -87,9 +88,7 @@ function validateRules(rules: RuleDraft[]): string | null {
     const graceDays = integerValue(rule.gracePeriodDays);
     const initialFee = moneyToCents(rule.initialLateFee);
     const dailyFee = moneyToCents(rule.dailyLateFee);
-    const maximumDays = integerValue(
-      rule.dailyLateFeeMaxDays,
-    );
+    const maximumDays = parseDailyLateFeeDays(rule.dailyLateFeeMaxDays);
 
     if (graceDays !== 3 && graceDays !== 4 && graceDays !== 5) {
       return `Choose a grace period of 3, 4, or 5 days for ${rule.tierName}.`;
@@ -103,12 +102,8 @@ function validateRules(rules: RuleDraft[]): string | null {
       return `Enter a valid daily late fee for ${rule.tierName}.`;
     }
 
-    if (
-      maximumDays === null ||
-      maximumDays < 0 ||
-      maximumDays > 365
-    ) {
-      return `Choose a valid daily late-fee limit for ${rule.tierName}.`;
+    if (maximumDays === null) {
+      return DAILY_LATE_FEE_DAYS_ERROR;
     }
 
     if (dailyFee > 0 && maximumDays < 1) {
@@ -136,7 +131,11 @@ export default function RecurringBillingClient({
     searchParams.get("mode") === "settings";
 
   const [rules, setRules] =
-    useState<RuleDraft[]>(initialRules);
+    useState<RuleDraft[]>(() => initialRules.map(rule => ({
+      ...rule,
+      initialLateFee: Number(rule.initialLateFee) === 0 ? "" : rule.initialLateFee,
+      dailyLateFee: Number(rule.dailyLateFee) === 0 ? "" : rule.dailyLateFee,
+    })));
 
   const [sameRulesForAll, setSameRulesForAll] =
     useState(rulesAreIdentical(initialRules));
@@ -448,7 +447,7 @@ export default function RecurringBillingClient({
 
   return (
     <main className="rfl-setup-page">
-      <section className="rfl-setup-card">
+      <section className="rfl-setup-card rfl-billing-rules-card">
         {settingsMode ? null : (
           <SetupProgress
             currentStep={4}
@@ -483,12 +482,9 @@ export default function RecurringBillingClient({
 
         <header className="rfl-setup-header">
           <h1>Billing Rules</h1>
-<a href={"/setup/recurring/billing?incremental=1"+(settingsMode?"&mode=settings":"")}>Edit one tier at a time</a>
 
           <p>
-            {settingsMode
-              ? "Update grace periods and late-fee rules. Rent is due on the 1st."
-              : "Rent is due on the 1st of every month. Choose your grace period and late fees."}
+            Payments are due on the 1st of every month. Choose your grace period and late fees.
           </p>
         </header>
 
@@ -572,7 +568,7 @@ export default function RecurringBillingClient({
                     }
                   >
                     {!["3", "4", "5"].includes(rule.gracePeriodDays) ? <option value={rule.gracePeriodDays} disabled>Existing: {rule.gracePeriodDays} days — choose a new value</option> : null}
-                    {[3, 4, 5].map(days => <option key={days} value={String(days)}>{days} calendar days</option>)}
+                    {[3, 4, 5].map(days => <option key={days} value={String(days)}>{days} days</option>)}
                   </select>
 
                   <p className="rfl-field-help">
@@ -604,7 +600,8 @@ export default function RecurringBillingClient({
                       type="text"
                       inputMode="decimal"
                       value={rule.initialLateFee}
-                      placeholder="75.00"
+                      placeholder="0.00"
+                      className="placeholder:text-slate-400"
                       onChange={(event) =>
                         updateRule(
                           rule.recurringPlanId,
@@ -641,7 +638,8 @@ export default function RecurringBillingClient({
                       type="text"
                       inputMode="decimal"
                       value={rule.dailyLateFee}
-                      placeholder="10.00"
+                      placeholder="0.00"
+                      className="placeholder:text-slate-400"
                       onChange={(event) =>
                         updateRule(
                           rule.recurringPlanId,
@@ -672,7 +670,10 @@ export default function RecurringBillingClient({
                     type="number"
                     inputMode="numeric"
                     min={0}
-                    max={365}
+                    max={MAX_DAILY_LATE_FEE_DAYS}
+                    step={1}
+                    aria-invalid={parseDailyLateFeeDays(rule.dailyLateFeeMaxDays) === null}
+                    aria-describedby={parseDailyLateFeeDays(rule.dailyLateFeeMaxDays) === null ? `daily-days-error-${rule.recurringPlanId}` : undefined}
                     value={rule.dailyLateFeeMaxDays}
                     onChange={(event) =>
                       updateRule(
@@ -686,6 +687,7 @@ export default function RecurringBillingClient({
                   <span>days</span>
                 </div>
 
+                {parseDailyLateFeeDays(rule.dailyLateFeeMaxDays) === null ? <p id={`daily-days-error-${rule.recurringPlanId}`} className="rfl-error" role="alert">{DAILY_LATE_FEE_DAYS_ERROR}</p> : null}
                 <p className="rfl-field-help">
                   Enter 0 when no daily late fee is used.
                 </p>

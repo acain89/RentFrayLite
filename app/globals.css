@@ -4758,3 +4758,9 @@ input:focus-visible {
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* Let grace-period help and fee validation use their natural height. */
+.rfl-billing-rules-card .rfl-setup-grid > .rfl-field {
+  grid-template-rows: auto;
+  min-width: 0;
+}

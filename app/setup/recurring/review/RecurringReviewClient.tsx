@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useState } from "react";
@@ -162,7 +162,7 @@ export default function RecurringReviewClient({
 
                 <dl>
                   <div>
-                    <dt>Rent Due:</dt>
+                    <dt>Payment Due:</dt>
                     <dd>
                       On the {formatOrdinal(tier.dueDay)}
                     </dd>

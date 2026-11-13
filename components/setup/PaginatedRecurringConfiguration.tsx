@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { MAX_DAILY_LATE_FEE_DAYS, DAILY_LATE_FEE_DAYS_ERROR, parseDailyLateFeeDays } from "@/lib/recurringValidation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SetupProgress from "@/components/setup/SetupProgress";
@@ -23,12 +24,12 @@ export default function PaginatedRecurringConfiguration({ step, highestReachedSt
   const [selected, setSelected] = useState<Tier|null>(null), [busy, setBusy] = useState(false), [message, setMessage] = useState("");
   const [name, setName] = useState(""), [amount, setAmount] = useState("");
   const [chargeId, setChargeId] = useState<string|undefined>(), [label, setLabel] = useState(""), [chargeAmount, setChargeAmount] = useState(""), [sharedCharge, setSharedCharge] = useState(false);
-  const [grace, setGrace] = useState("5"), [initialFee, setInitialFee] = useState("0.00"), [dailyFee, setDailyFee] = useState("0.00"), [days, setDays] = useState("0");
+  const [grace, setGrace] = useState("5"), [initialFee, setInitialFee] = useState(""), [dailyFee, setDailyFee] = useState(""), [days, setDays] = useState("0");
   const [sharedRules, setSharedRules] = useState(false), [confirmCalendar, setConfirmCalendar] = useState(false);
   const pending = useRef<{ body: string; requestId: string }|null>(null), selectedId = useRef<string|null>(null);
   const choose = useCallback((tier: Tier|null) => {
     selectedId.current = tier?.id ?? null; setSelected(tier); setName(tier?.name ?? ""); setAmount(tier ? money(tier.baseAmountCents) : "");
-    setGrace(String(tier?.gracePeriodDays ?? 5)); setInitialFee(money(tier?.initialLateFeeCents ?? 0)); setDailyFee(money(tier?.dailyLateFeeCents ?? 0)); setDays(String(tier?.dailyLateFeeMaxDays ?? 0));
+    setGrace(String(tier?.gracePeriodDays ?? 5)); setInitialFee(tier?.initialLateFeeCents ? money(tier.initialLateFeeCents) : ""); setDailyFee(tier?.dailyLateFeeCents ? money(tier.dailyLateFeeCents) : ""); setDays(String(tier?.dailyLateFeeMaxDays ?? 0));
     setChargeId(undefined); setLabel(""); setChargeAmount(""); setSharedCharge(false); setConfirmCalendar(false);
   }, []);
   const cursor = history[index];
@@ -63,9 +64,9 @@ export default function PaginatedRecurringConfiguration({ step, highestReachedSt
   const suffix = settings ? "?mode=settings" : "";
   return <main className="rfl-settings-page"><section className="rfl-settings-shell">
     <SetupProgress currentStep={step === "tiers" ? 2 : step === "charges" ? 3 : step === "billing" ? 4 : 5} highestReachedStep={highestReachedStep}/>
-    <h1>{step === "tiers" ? "Rent Tiers" : step === "charges" ? "Monthly Charges" : step === "billing" ? "Billing Rules" : "Review Configuration"}</h1>
+    <h1>{step === "tiers" ? "Create each monthly price option your customers can select." : step === "charges" ? "Monthly Charges" : step === "billing" ? "Billing Rules" : "Review Configuration"}</h1>
     <nav>{(["tiers","charges","billing","review"] as Step[]).map(s => <Link key={s} href={"/setup/recurring/"+s+suffix}>{s} </Link>)}</nav>
-    <p>{page.total} active rent tiers. Select a tier to edit; changes to other tiers are preserved.</p>
+    {step === "tiers" ? <div aria-live="polite">{page.total} active rent tiers</div> : <p>{page.total} active rent tiers. Select a tier to edit; changes to other tiers are preserved.</p>}
     <fieldset disabled={busy}>
       <button type="button" disabled={index === 0} onClick={() => setIndex(i => i-1)}>Previous tiers</button>
       <button type="button" disabled={!page.nextCursor} onClick={() => { setHistory(h => [...h.slice(0,index+1),page.nextCursor]); setIndex(i => i+1); }}>Next tiers</button>
@@ -91,21 +92,22 @@ export default function PaginatedRecurringConfiguration({ step, highestReachedSt
         </form>
         {chargeId && <button type="button" onClick={() => { if (window.confirm(sharedCharge ? "Remove this charge from all tiers?" : "Remove this charge from this tier?")) void act(() => save("charge", { ...chargePayload(), remove: true })); }}>Remove charge</button>}
       </>}
-      {step === "billing" && selected && <form onSubmit={e => { e.preventDefault(); void act(() => save("billing", { id: selected.id, version: sharedRules ? page.version : selected.version, shared: sharedRules, confirmCalendarChange: confirmCalendar,
-        rule: { dueDay: 1, gracePeriodDays: Number(grace), initialLateFeeCents: cents(initialFee), dailyLateFeeCents: cents(dailyFee), dailyLateFeeMaxDays: Number(days) } })); }}>
-        <h2>{selected.name}</h2><p>Rent is due on the 1st.</p>
+      {step === "billing" && selected && <form noValidate onSubmit={e => { e.preventDefault(); if (parseDailyLateFeeDays(days) === null) { setMessage(DAILY_LATE_FEE_DAYS_ERROR); return; } void act(() => save("billing", { id: selected.id, version: sharedRules ? page.version : selected.version, shared: sharedRules, confirmCalendarChange: confirmCalendar,
+        rule: { dueDay: 1, gracePeriodDays: Number(grace), initialLateFeeCents: cents(initialFee.trim() || "0"), dailyLateFeeCents: cents(dailyFee.trim() || "0"), dailyLateFeeMaxDays: parseDailyLateFeeDays(days) } })); }}>
+        <h2>{selected.name}</h2><p>Payments are due on the 1st of every month. Choose your grace period and late fees.</p>
         <label htmlFor="tier-grace">Grace period</label><select id="tier-grace" value={grace} onChange={e => setGrace(e.target.value)}>
           {!["3","4","5"].includes(grace) && <option value={grace} disabled>Choose 3, 4, or 5 days</option>}
           {[3,4,5].map(n => <option key={n} value={n}>{n} days</option>)}</select>
-        <label>Initial late fee<input value={initialFee} onChange={e => setInitialFee(e.target.value)}/></label>
-        <label>Daily late fee<input value={dailyFee} onChange={e => setDailyFee(e.target.value)}/></label>
-        <label>Maximum daily late-fee days<input type="number" min={0} max={365} value={days} onChange={e => setDays(e.target.value)}/></label>
+        <label>Initial late fee<input value={initialFee} placeholder="0.00" className="placeholder:text-slate-400" inputMode="decimal" onChange={e => setInitialFee(e.target.value)}/></label>
+        <label>Daily late fee<input value={dailyFee} placeholder="0.00" className="placeholder:text-slate-400" inputMode="decimal" onChange={e => setDailyFee(e.target.value)}/></label>
+        <label>Maximum daily late-fee days<input type="number" min={0} max={MAX_DAILY_LATE_FEE_DAYS} step={1} aria-invalid={parseDailyLateFeeDays(days) === null} aria-describedby={parseDailyLateFeeDays(days) === null ? "tier-days-error" : undefined} value={days} onChange={e => setDays(e.target.value)}/></label>
+        {parseDailyLateFeeDays(days) === null && <p id="tier-days-error" className="rfl-error" role="alert">{DAILY_LATE_FEE_DAYS_ERROR}</p>}
         <label><input type="checkbox" checked={sharedRules} onChange={e => setSharedRules(e.target.checked)}/>Same rules for all tiers</label>
         <p>Check to apply this save to every active tier. Leave unchecked to update only the selected tier.</p>
         <label><input type="checkbox" checked={confirmCalendar} onChange={e => setConfirmCalendar(e.target.checked)}/>Confirm conversion of any existing legacy billing calendar</label>
         <button>Save billing rules</button>
       </form>}
-      {step === "review" && selected && <section><h2>{selected.name}</h2><p>Monthly amount: ${money(selected.baseAmountCents)}. Due day: {selected.dueDay}. Grace: {selected.gracePeriodDays} days.</p>
+      {step === "review" && selected && <section><h2>{selected.name}</h2><p>Monthly amount: ${money(selected.baseAmountCents)}. Payment Due: {selected.dueDay}. Grace: {selected.gracePeriodDays} days.</p>
         <p>Initial late fee: ${money(selected.initialLateFeeCents)}. Daily late fee: ${money(selected.dailyLateFeeCents)}, up to {selected.dailyLateFeeMaxDays} days.</p>
         <ul>{selected.charges.map(c => <li key={c.id}>{c.label}: ${money(c.amountCents)}</li>)}</ul></section>}
       {settings ? <Link href="/manager/settings">Back to settings</Link> : <button type="button" disabled={!page.total} onClick={() => void act(proceed)}>{step === "review" ? "Continue to Stripe" : "Continue"}</button>}

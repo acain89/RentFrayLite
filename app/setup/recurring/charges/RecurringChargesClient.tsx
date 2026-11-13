@@ -602,7 +602,6 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
     ? "Monthly Charges"
     : "Add monthly charges"}
 </h1>
-<a href={"/setup/recurring/charges?incremental=1"+(settingsMode?"&mode=settings":"")}>Edit one tier at a time</a>
 
 <p>
   {settingsMode
@@ -698,9 +697,7 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
                     />
                   </div>
 
-                  <p className="rfl-field-help">
-                    Enter numbers only. No $ needed.
-                  </p>
+
                 </div>
               </div>
 
@@ -823,7 +820,7 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
       className="rfl-auth-secondary-link !mt-0"
       href="/setup/recurring/tiers"
     >
-      Back to Rent Tiers
+      Back to Tiers
     </Link>
   </div>
 )}

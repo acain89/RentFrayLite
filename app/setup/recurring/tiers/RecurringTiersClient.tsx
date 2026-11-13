@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -390,18 +390,8 @@ const settingsMode =
 </div>
 
 <header className="rfl-setup-header">
-  <h1>
-    {settingsMode
-      ? "Rent Tiers"
-      : "Add your rent tiers"}
-  </h1>
+  <h1>Create each monthly price option your customers can select.</h1>
 <a href={"/setup/recurring/tiers?incremental=1"+(settingsMode?"&mode=settings":"")}>Edit one tier at a time</a>
-
-  <p>
-    {settingsMode
-      ? "Update your tier names or monthly rent amounts."
-      : "Create each monthly price option your customers can select."}
-  </p>
 </header>
 
 {settingsMode ? (
@@ -493,9 +483,7 @@ const settingsMode =
   />
 </div>
 
-<p className="rfl-field-help">
-  Enter numbers only. No $ needed.
-</p>
+
                 </div>
               </div>
             </article>
