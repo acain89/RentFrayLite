@@ -29,8 +29,8 @@ for(const backend of postgres?['isolated','postgres']:['isolated']){
   assert.equal(await f.db.auditLog.count({where:{businessId:f.identity.businessId,action:'STRIPE_ACCOUNT_CREATED'}}),1);
  });
  for(const fault of ['stripeConnection.create','stripeAccountProvisioning.update','auditLog.create'])test(label+': Stripe create followed by '+fault+' failure recovers with same frozen request/key',async()=>{
-  const f=await provisioningFixture(backend);f.fail(fault);assert.equal((await f.connect()).status,500);assert.equal(f.state.accounts.size,1);assert.equal(await f.db.stripeConnection.count({where:{businessId:f.identity.businessId}}),0);
-  const before=await f.journal();assert.ok(before);f.fail(fault,false);await f.db.business.update({where:{id:f.identity.businessId},data:{name:'Changed after timeout',contactEmail:'changed@example.test'}});
+  const f=await provisioningFixture(backend),create=f.stripe.accounts.create;f.stripe.accounts.create=async(...args)=>{const account=await create(...args);f.fail(fault);return account;};assert.equal((await f.connect()).status,500);assert.equal(f.state.accounts.size,1);assert.equal(await f.db.stripeConnection.count({where:{businessId:f.identity.businessId}}),0);
+  const before=await f.journal();assert.ok(before);f.stripe.accounts.create=create;f.fail(fault,false);await f.db.business.update({where:{id:f.identity.businessId},data:{name:'Changed after timeout',contactEmail:'changed@example.test'}});
   assert.equal((await f.connect()).status,200);assert.equal(f.state.accounts.size,1);assert.equal(f.state.createCalls.length,2);
   assert.deepEqual(f.state.createCalls[0],f.state.createCalls[1]);assert.equal((await f.journal()).id,before.id);assert.equal(await f.db.auditLog.count({where:{businessId:f.identity.businessId,action:'STRIPE_ACCOUNT_CREATED'}}),1);
  });

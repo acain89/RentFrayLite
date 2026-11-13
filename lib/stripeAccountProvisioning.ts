@@ -1,3 +1,4 @@
+import { readProvisioningAttempt, provisioningAttemptKey, storeProvisioningAttempt, safeStripeRequestId, STRIPE_CREATE_REPLAY_MS } from "@/lib/stripeProvisioningAttempt";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { StripeAccountProvisioning } from "@prisma/client";
@@ -6,7 +7,7 @@ import { withManagerMutation, type ManagerMutationIdentity } from "@/lib/manager
 import { classifyStripeCredentialMode, validateStripePaymentIdentity, type StripePaymentIdentity } from "@/lib/stripePaymentContext";
 
 const OPTIONS: Stripe.RequestOptions = { timeout: 5000, maxNetworkRetries: 0 };
-const SAFE_REPLAY_MS = 23 * 60 * 60 * 1000; // Stripe v1 keys may be pruned after 24h.
+const SAFE_REPLAY_MS = STRIPE_CREATE_REPLAY_MS;
 type Profile = "LEGACY_DESTINATION" | "DIRECT";
 export class StripeProvisioningUnverified extends Error {}
 
@@ -34,7 +35,7 @@ async function readIdentity(stripe: Stripe, expected?: StripePaymentIdentity): P
 function verifyJournal(row: StripeAccountProvisioning, businessId: string, identity: StripePaymentIdentity, profile: Profile) {
   if (row.businessId !== businessId || row.stripePlatformAccountId !== identity.platformAccountId || row.stripeMode !== identity.mode ||
       row.chargeModel !== profile) throw new StripeProvisioningUnverified("Provisioning identity, environment or profile changed. No replacement account was created.");
-  const parameters = row.parameters as Stripe.AccountCreateParams;
+  const parameters = readProvisioningAttempt(row).request;
   if (!parameters || typeof parameters !== "object" || !parameters.metadata || typeof parameters.metadata !== "object" || parameters.metadata.rflBusinessId !== businessId ||
       parameters.metadata?.rflProvisioningId !== row.id || parameters.metadata?.rflProvisioningModel !== profile ||
       parameters.metadata?.product !== "RentFrayLite") throw new StripeProvisioningUnverified("Provisioning request ownership is unverified.");
@@ -61,7 +62,7 @@ export async function provisionStripeConnectedAccount(identity: ManagerMutationI
   if (profile === "DIRECT" && !expectedIdentity) throw new StripeProvisioningUnverified("An explicit platform identity is required for future direct provisioning.");
   const prepared = await withManagerMutation(identity, async tx => {
     const existing = await tx.stripeConnection.findUnique({ where: { businessId: identity.businessId! } });
-    if (existing) return { existing, journal: null, platform: null };
+    if (existing) return { existing, journal: null, platform: null, attemptKey: null };
     const platform = await readIdentity(stripe, expectedIdentity);
     let journal = await tx.stripeAccountProvisioning.findUnique({ where: { businessId: identity.businessId! } });
     if (!journal) {
@@ -73,30 +74,65 @@ export async function provisionStripeConnectedAccount(identity: ManagerMutationI
         parameters: accountProvisioningParameters(profile, { businessId: business.id, provisioningId: id, email: business.contactEmail, name: business.name }) as Prisma.InputJsonValue } });
     }
     verifyJournal(journal, identity.businessId!, platform, profile);
-    return { existing: null, journal, platform };
+    const state = readProvisioningAttempt(journal);
+    if (!journal.stripeAccountId) {
+      const [{ now }] = await tx.$queryRaw<Array<{ now: Date }>>(Prisma.sql`SELECT clock_timestamp() AS now`);
+      const age = now.getTime() - new Date(state.attempt.startedAt).getTime();
+      if (!Number.isFinite(age) || age < 0 || age >= SAFE_REPLAY_MS || state.attempt.calls >= 1000000)
+        throw new StripeProvisioningUnverified("Unconfirmed creation requires verified recovery; no new account was created.");
+      journal = await tx.stripeAccountProvisioning.update({ where: { id: journal.id }, data: {
+        parameters: storeProvisioningAttempt(state.request, { ...state.attempt, state: "IN_FLIGHT",
+          calls: state.attempt.calls + 1, pendingCalls: state.attempt.pendingCalls + 1 }) as unknown as Prisma.InputJsonValue,
+      } });
+    }
+    return { existing: null, journal, platform, attemptKey: provisioningAttemptKey(journal.id, state.attempt) };
   });
   if (prepared.existing) return prepared.existing;
-  return withManagerMutation(identity, async tx => {
+  const outcome = await withManagerMutation(identity, async tx => {
     const existing = await tx.stripeConnection.findUnique({ where: { businessId: identity.businessId! } });
-    if (existing) return existing;
+    if (existing) return { kind: "connected" as const, connection: existing };
     const journal = await tx.stripeAccountProvisioning.findUnique({ where: { id: prepared.journal!.id } });
     if (!journal) throw new StripeProvisioningUnverified("Provisioning reservation disappeared.");
     const parameters = verifyJournal(journal, identity.businessId!, prepared.platform!, profile);
     const [{ now }] = await tx.$queryRaw<Array<{ now: Date }>>(Prisma.sql`SELECT clock_timestamp() AS now`);
-    const age = now.getTime() - journal.createdAt.getTime();
+    const state = readProvisioningAttempt(journal);
+    const attemptKey = provisioningAttemptKey(journal.id, state.attempt);
+    if (attemptKey !== prepared.attemptKey) throw new StripeProvisioningUnverified("Provisioning attempt changed. Reload before retrying.");
+    const age = now.getTime() - new Date(state.attempt.startedAt).getTime();
     if (!journal.stripeAccountId && (!Number.isFinite(age) || age < 0 || age >= SAFE_REPLAY_MS)) {
       throw new StripeProvisioningUnverified("Stripe account creation is unconfirmed and its safe replay window has ended. Verify the existing account; no replacement was created.");
     }
-    const account = journal.stripeAccountId
-      ? await stripe.accounts.retrieve(journal.stripeAccountId, OPTIONS)
-      : await stripe.accounts.create(parameters, { ...OPTIONS, idempotencyKey: `rfl-connect-v1-${journal.id}` });
+    let account: Stripe.Account;
+    if (journal.stripeAccountId) account = await stripe.accounts.retrieve(journal.stripeAccountId, OPTIONS);
+    else {
+      try { account = await stripe.accounts.create(structuredClone(parameters), { ...OPTIONS, idempotencyKey: attemptKey }); }
+      catch (error) {
+        // Every SDK creation failure remains unconfirmed, regardless of HTTP code.
+        // Return the error until after commit so evidence is not rolled back.
+        const requestId = safeStripeRequestId(error);
+        await tx.stripeAccountProvisioning.update({ where: { id: journal.id }, data: {
+          parameters: storeProvisioningAttempt(parameters, { ...state.attempt,
+            state: state.attempt.pendingCalls > 1 ? "IN_FLIGHT" : "UNCONFIRMED", pendingCalls: state.attempt.pendingCalls - 1,
+            ...(requestId ? { lastRequestId: requestId } : {}) }) as unknown as Prisma.InputJsonValue,
+        } });
+        await tx.auditLog.create({ data: { businessId: journal.businessId, actorType: "MANAGER", actorId: identity.managerId!,
+          action: "STRIPE_ACCOUNT_CREATE_UNCONFIRMED", targetType: "STRIPE_ACCOUNT_PROVISIONING", targetId: journal.id,
+          summary: "Account creation is unconfirmed; no replacement attempt authorized.",
+          metadata: { attemptId: state.attempt.id, ...(requestId ? { requestId } : {}) },
+        } });
+        return { kind: "failed" as const, error };
+      }
+    }
     verifyAccount(account, journal);
-    await tx.stripeAccountProvisioning.update({ where: { id: journal.id }, data: { stripeAccountId: account.id } });
+    await tx.stripeAccountProvisioning.update({ where: { id: journal.id }, data: { stripeAccountId: account.id,
+      parameters: storeProvisioningAttempt(parameters, { ...state.attempt, state: "READY", pendingCalls: 0 }) as unknown as Prisma.InputJsonValue } });
     const connection = await tx.stripeConnection.create({ data: { businessId: journal.businessId, stripeAccountId: account.id } });
     await tx.auditLog.create({ data: { businessId: journal.businessId, actorType: "MANAGER", actorId: identity.managerId!, action: "STRIPE_ACCOUNT_CREATED",
       targetType: "STRIPE_ACCOUNT", targetId: account.id, summary: profile === "DIRECT" ? "Direct-compatible connected account provisioned; payment activation remains separate." : "Stripe Express connected account created." } });
-    return connection;
+    return { kind: "connected" as const, connection };
   });
+  if (outcome.kind === "failed") throw outcome.error;
+  return outcome.connection;
 }
 
 /** Explicit server/operator recovery after the replay window. This does not
