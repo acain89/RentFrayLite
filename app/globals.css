@@ -1514,21 +1514,19 @@ input:focus-visible {
 
 .rfl-bank-benefits {
   display: grid;
-  gap: 14px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
 }
 
-.rfl-bank-benefits > div {
+.rfl-bank-benefits > li {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  border: 1px solid var(--rfl-border);
-  border-radius: 16px;
-  background: white;
-  padding: 15px;
 }
 
-.rfl-bank-benefits > div > span {
+.rfl-bank-benefits > li > span {
   display: inline-flex;
   width: 25px;
   height: 25px;
@@ -1543,17 +1541,27 @@ input:focus-visible {
 }
 
 .rfl-bank-benefits p {
-  display: grid;
-  gap: 3px;
   margin: 0;
   color: var(--rfl-text-soft);
   font-size: 14px;
   line-height: 1.5;
 }
 
-.rfl-bank-benefits strong {
+.rfl-bank-tip {
+  margin-bottom: 24px;
+  padding-left: 12px;
+  border-left: 3px solid var(--rfl-border-strong);
+  color: var(--rfl-text-soft);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.rfl-bank-tip strong {
   color: var(--rfl-text);
-  font-size: 15px;
+}
+
+.rfl-bank-tip p {
+  margin: 4px 0 0;
 }
 
 .rfl-bank-success {

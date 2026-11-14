@@ -69,41 +69,39 @@ export default function BankSetupClient({
           highestReachedStep={highestReachedStep}
         />
 
-        <p className="rfl-eyebrow">Step 6 of 7</p>
+        <header className="rfl-setup-header">
+          <h1>Connect your bank</h1>
+        </header>
+
+        <ul className="rfl-bank-benefits" aria-label="Stripe banking benefits">
+          {[
+            "Stripe securely collects your banking information.",
+            "RentFrayLite never sees or stores your bank login credentials.",
+            "Customer payments are processed securely through Stripe.",
+            "Receive payouts directly to your connected bank account.",
+          ].map((benefit) => (
+            <li key={benefit}>
+              <span aria-hidden="true">{"\u2713"}</span>
+              <p>{benefit}</p>
+            </li>
+          ))}
+        </ul>
+
+        <aside className="rfl-bank-tip" aria-label="Stripe setup tip">
+          <strong>Tip</strong>
+          <p>
+            If you&apos;re a sole proprietor, selecting Individual / Sole
+            Proprietorship during Stripe setup is usually the simplest option.
+          </p>
+        </aside>
+
         {readiness ? <aside aria-label="Payment readiness"><strong>{readiness.title}</strong>
           {readiness.reasons.map((reason) => <p key={reason.code}><Link href={reason.route}>{reason.message}</Link></p>)}
         </aside> : null}
 
-        <header className="rfl-setup-header">
-          <h1>
-            {readiness?.canChooseAccountCode
-              ? "Bank account connected!"
-              : initialStatus.exists
-                ? "Finish connecting your bank"
-                : "Connect your bank"}
-          </h1>
-
-          {!readiness?.canChooseAccountCode ? (
-            <>
-              <p>
-                Stripe securely connects your bank account so you can receive
-                customer payments. RentFrayLite never stores your banking
-                credentials.
-              </p>
-
-              <div className="rfl-bank-tip">
-                <strong>Tip:</strong> If you operate as an individual business
-                owner, selecting{" "}
-                <strong>Individual / Sole Proprietorship</strong> is usually the
-                quickest option.
-              </div>
-            </>
-          ) : null}
-        </header>
-
         {readiness?.canChooseAccountCode ? (
           <div className="rfl-bank-success">
-            <span aria-hidden="true">âœ“</span>
+            <span aria-hidden="true">{"\u2713"}</span>
 
             <div>
               <strong>Bank account connected</strong>
@@ -116,26 +114,6 @@ export default function BankSetupClient({
           </div>
         ) : (
           <>
-            <div className="rfl-bank-benefits">
-              <div>
-                <span aria-hidden="true">âœ“</span>
-
-                <p>
-                  <strong>Secure verification</strong>
-                  Your information is collected directly by Stripe.
-                </p>
-              </div>
-
-              <div>
-                <span aria-hidden="true">âœ“</span>
-
-                <p>
-                  <strong>Direct deposits</strong>
-                  Funds are deposited into your connected account.
-                </p>
-              </div>
-            </div>
-
             {returnedFromStripe && !readiness?.canChooseAccountCode ? (
               <div className="rfl-bank-notice">
                 <strong>Stripe still needs more information.</strong>
@@ -152,9 +130,6 @@ export default function BankSetupClient({
               </div>
             ) : null}
 
-            <p className="rfl-field-help text-center">
-              Usually takes less than 2 minutes.
-            </p>
           </>
         )}
 
@@ -189,10 +164,6 @@ export default function BankSetupClient({
           )}
         </div>
 
-        <p className="rfl-bank-footer">
-          Your banking information is securely collected and stored by Stripe.
-          RentFrayLite never has access to your bank account credentials.
-        </p>
       </section>
     </main>
   );

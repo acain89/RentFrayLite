@@ -391,7 +391,6 @@ const settingsMode =
 
 <header className="rfl-setup-header">
   <h1>Create each monthly price option your customers can select.</h1>
-<a href={"/setup/recurring/tiers?incremental=1"+(settingsMode?"&mode=settings":"")}>Edit one tier at a time</a>
 </header>
 
 {settingsMode ? (
