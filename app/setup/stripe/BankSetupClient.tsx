@@ -75,7 +75,7 @@ export default function BankSetupClient({
 
         <ul className="rfl-bank-benefits" aria-label="Stripe banking benefits">
           {[
-            "Stripe securely collects your banking information.",
+            "Stripe securely handles your banking information.",
             "RentFrayLite never sees or stores your bank login credentials.",
             "Customer payments are processed securely through Stripe.",
             "Receive payouts directly to your connected bank account.",
@@ -95,7 +95,14 @@ export default function BankSetupClient({
           </p>
         </aside>
 
-        {readiness ? <aside aria-label="Payment readiness"><strong>{readiness.title}</strong>
+        {readiness && !(
+          !initialStatus.exists && !returnedFromStripe && !initialError &&
+          readiness.configurationReady && readiness.title === "Finish payment setup" &&
+          readiness.reasons.length === 3 &&
+          new Set(readiness.reasons.map((reason) => reason.code)).size === 3 &&
+          readiness.reasons.every((reason) =>
+            ["ACCOUNT_CODE", "SETUP_INCOMPLETE", "STRIPE_MISSING"].includes(reason.code))
+        ) ? <aside aria-label="Payment readiness"><strong>{readiness.title}</strong>
           {readiness.reasons.map((reason) => <p key={reason.code}><Link href={reason.route}>{reason.message}</Link></p>)}
         </aside> : null}
 
