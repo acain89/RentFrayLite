@@ -76,7 +76,25 @@ test("Existing Prisma schema and historical migrations remain unchanged; request
  for(const file of files)assert.equal(normal(readFileSync(file,"utf8")),normal(execFileSync("git",["show",baseline+":"+file],{encoding:"utf8",windowsHide:true})),file);
  const sql=readFileSync("prisma/migrations/20261026050000_public_request_budgets/migration.sql","utf8");assert.doesNotMatch(sql,/^\s*(?:UPDATE|DELETE|DROP|ALTER|TRUNCATE)/m);
 });
-test("active Stripe, SMS, authentication, fees, reconciliation and payout gates remain unchanged",()=>{for(const file of ["lib/auth.ts","lib/session.ts","lib/passwordRecovery.ts","lib/platformFees.ts","lib/rflDirectPricing.ts","lib/directFinancialReconciliation.ts","lib/stripePaymentWebhook.ts","lib/smsDelivery.ts","lib/instantPayoutPolicy.ts","lib/instantPayoutLifecycle.ts","lib/paymentArchitecturePolicy.ts","app/api/public/checkout/session/route.ts"]){if(file==="app/api/public/checkout/session/route.ts"){assertCheckoutFinancialSource("c5e4572220859e49786ef6931d5384f12e2fdfb9");continue;}assert.equal(historicalCheckoutSource(file,readFileSync(file,"utf8")).replaceAll("\r\n","\n"),execFileSync("git",["show","c5e4572220859e49786ef6931d5384f12e2fdfb9:"+file],{encoding:"utf8",windowsHide:true}).replaceAll("\r\n","\n"),file);}for(const file of ["app/manager/dashboard/page.tsx","app/manager/dashboard/ManagerDashboardClient.tsx"])assert.doesNotMatch(readFileSync(file,"utf8"),/InstantPayout|instantPayout|delinquen|outstanding|unpaid|Collected|analytics/);});
+test("active Stripe, SMS, authentication, fees, reconciliation and payout gates remain unchanged",()=>{
+ for(const file of ["lib/auth.ts","lib/session.ts","lib/passwordRecovery.ts","lib/platformFees.ts","lib/rflDirectPricing.ts","lib/directFinancialReconciliation.ts","lib/stripePaymentWebhook.ts","lib/smsDelivery.ts","lib/instantPayoutPolicy.ts","lib/instantPayoutLifecycle.ts","lib/paymentArchitecturePolicy.ts","app/api/public/checkout/session/route.ts"]){
+  if(file==="app/api/public/checkout/session/route.ts"){assertCheckoutFinancialSource("c5e4572220859e49786ef6931d5384f12e2fdfb9");continue;}
+  let expected=execFileSync("git",["show","c5e4572220859e49786ef6931d5384f12e2fdfb9:"+file],{encoding:"utf8",windowsHide:true}).replaceAll("\r\n","\n");
+  if(file==="lib/auth.ts"){
+   // Approved ADMIN PIN release: only the import and validation call were renamed.
+   // Preserve the complete historical file comparison and every other safeguard.
+   for(const [before,after] of [
+    ['import { isStrongAdminCredential } from "@/lib/adminCredential";', 'import { isAdminCredential } from "@/lib/adminCredential";'],
+    ['  if (!isStrongAdminCredential(code)) return null;', '  if (!isAdminCredential(code)) return null;'],
+   ]){
+    assert.equal(expected.split(before).length-1,1,"Exact historical ADMIN helper context");
+    expected=expected.replace(before,after);
+   }
+  }
+  assert.equal(historicalCheckoutSource(file,readFileSync(file,"utf8")).replaceAll("\r\n","\n"),expected,file);
+ }
+ for(const file of ["app/manager/dashboard/page.tsx","app/manager/dashboard/ManagerDashboardClient.tsx"])assert.doesNotMatch(readFileSync(file,"utf8"),/InstantPayout|instantPayout|delinquen|outstanding|unpaid|Collected|analytics/);
+});
 
 test('checkout start ingress preserves the complete historical financial and authorization handler',()=>assertCheckoutStartSource('c5e4572220859e49786ef6931d5384f12e2fdfb9'));
 

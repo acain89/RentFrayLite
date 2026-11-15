@@ -1,15 +1,26 @@
 "use client";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardPayment } from "@/lib/dashboard";
 import type { PaymentReadiness } from "@/lib/paymentReadiness";
 import { REPORT_STATE_HELP, REPORT_PAGE_SIZE, reportSearchParams, type ReportFilters } from "@/lib/transactionReportView";
 import { reportingTimestampFormatter } from "@/lib/reportingCalendar";
 type Props = {readiness:PaymentReadiness;businessName:string;accountCode:string;managerName:string;billingCycleLabel:string;
+  summary:{paid:number;pending:number;issues:number};billingCycle:string;currentCycle:string;
   payments:DashboardPayment[];total:number;filters:ReportFilters;timeZone:string;legacyTimeZone:boolean;nextCycleAt:string};
 export default function ManagerDashboardClient(p:Props) {
   const router=useRouter();
+  const [shareMessage, setShareMessage] = useState("");
+  async function sharePaymentLink() {
+    const url = new URL("/" + p.accountCode, window.location.origin).href;
+    try {
+      if (navigator.share) await navigator.share({ title: p.businessName, url });
+      else { await navigator.clipboard.writeText(url); setShareMessage("Payment link copied."); }
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) setShareMessage("Unable to share. Open your payment page to copy its link.");
+    }
+  }
   useEffect(()=>{
     let timer:ReturnType<typeof setTimeout>,refreshed=false;
     const check=()=>{
@@ -24,48 +35,50 @@ export default function ManagerDashboardClient(p:Props) {
   },[p.nextCycleAt,router]);
   const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n/100);
   const date=reportingTimestampFormatter(p.timeZone);
-  const href=(status:string,page=1)=>"/manager/dashboard?"+reportSearchParams({...p.filters,status},page);
-  return <main className="rfl-dashboard-page">
-    <aside aria-label="Payment readiness" role="status"><strong>{p.readiness.title}</strong>{p.readiness.reasons.map(r=><p key={r.code}><Link href={r.route}>{r.message}</Link></p>)}</aside>
-    <header className="rfl-dashboard-header"><div><p className="rfl-eyebrow">Manager dashboard</p><h1>{p.businessName}</h1>
-      <p>Account code: <strong>{p.accountCode}</strong> | Signed in as {p.managerName}</p></div>
-      <nav className="rfl-history-header-actions" aria-label="Management"><Link className="rfl-primary-button" href="/manager/history">Payment History</Link>
-        <Link className="rfl-secondary-button" href="/manager/settings">Manage</Link>
-        <button
-  className="rfl-secondary-button rfl-dashboard-signout"
-  type="button"
-  onClick={async () => {
-    try {
-      const response = await fetch("/api/auth/logout", {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        throw new Error("Logout failed.");
-      }
-    } finally {
-      window.location.assign("/");
-    }
-  }}
->
-  Sign Out
-</button></nav></header>
-    <section className="rfl-dashboard-cycle-header"><div><p>Current billing cycle</p><h2>{p.billingCycleLabel}</h2>
-      <p>{p.legacyTimeZone?"UTC display compatibility: property timezone is not configured.":p.timeZone}</p>
-      <p>Standard payments use their recorded billing cycle; Custom payments use their original transaction month in the display timezone.</p></div></section>
-    <section className="rfl-dashboard-payments"><header className="rfl-dashboard-payments-header"><h2>Payment transactions</h2>
-      <nav className="rfl-dashboard-filters" aria-label="Filter payments">{[["ALL","All"],["PENDING","Pending"],["SUCCESSFUL","Paid records"],["FAILED","Failed / returned / disputed"]].map(([value,label])=>
-        <Link key={value} className={"rfl-dashboard-filter"+(p.filters.status===value?" rfl-dashboard-filter-active":"")} href={href(value)}>{label}</Link>)}</nav></header>
-      <p>{p.total} matching transactions</p>
-      <p>{REPORT_STATE_HELP}</p><p>Original transaction dates show when the payment record was created, not settlement or refund dates.</p>
-      {p.payments.length===0?<div className="rfl-dashboard-empty"><h3>No matching payments</h3><p>Recorded payments for this cycle will appear here.</p></div>:
-      <div style={{overflowX:"auto"}}><table className="rfl-dashboard-table"><thead><tr>{["Tenant","Unit","Amount","Status","Method","Original transaction date","Type"].map(h=><th key={h}>{h}</th>)}</tr></thead>
-        <tbody>{p.payments.map(row=><tr key={row.id}><td>{row.customerName}</td><td>{row.reference}</td><td>{money(row.amountCents)}</td>
+  const href=(status:string,page=1)=>{
+    const query=reportSearchParams({...p.filters,status},page);
+    if(p.billingCycle!==p.currentCycle) query.set("cycle",p.billingCycle);
+    return "/manager/dashboard?"+query;
+  };
+  const pages=Math.max(1,Math.ceil(p.total/REPORT_PAGE_SIZE));
+  return <main className="rfl-dashboard-page rfl-manager-home">
+    <header className="rfl-home-header">
+      <div className="rfl-home-identity"><p className="rfl-eyebrow">RentFrayLite</p><h1>{p.businessName}</h1>
+        <button className="rfl-home-code" onClick={sharePaymentLink} type="button" aria-label={"Share payment link for account code "+p.accountCode}>{p.accountCode} <span aria-hidden="true">{"\u2197"}</span></button>
+      </div>
+      <details className="rfl-home-menu"><summary aria-label="Account menu">Account</summary><div>
+        <p>{p.managerName}</p><Link href="/manager/settings">Settings</Link>
+        <button type="button" onClick={async()=>{try{const response=await fetch("/api/auth/logout",{method:"POST"});if(!response.ok)throw new Error("Logout failed.");}finally{window.location.assign("/");}}}>Sign Out</button>
+      </div></details>
+    </header>
+    <aside className={"rfl-home-readiness"+(p.readiness.ready?" is-ready":"")} aria-label="Payment readiness" role="status">
+      <span aria-hidden="true">{p.readiness.ready?"\u25cf":"!"}</span> <strong>{p.readiness.title}</strong>
+      {p.readiness.reasons.map(r=><p key={r.code}><Link href={r.route}>{r.message}</Link></p>)}
+    </aside>
+    <nav className="rfl-home-nav" aria-label="Management"><Link href="/manager/dashboard" aria-current="page">Overview</Link><Link href="/manager/history" aria-label="Payment History">History</Link><Link href="/manager/settings">Manage</Link></nav>
+    <section className="rfl-home-month" aria-label="Billing month"><div><p className="rfl-eyebrow">Monthly activity</p><h2>{p.billingCycleLabel}</h2></div>
+      <form action="/manager/dashboard"><label htmlFor="dashboard-cycle">Choose month</label><div><input id="dashboard-cycle" type="month" name="cycle" required defaultValue={p.billingCycle}/><button type="submit">View</button></div></form>
+    </section>
+    <section className="rfl-home-summary" aria-label="Monthly payment counts">
+      {([["SUCCESSFUL","Paid",p.summary.paid],["PENDING","Pending",p.summary.pending],["FAILED","Needs attention",p.summary.issues]] as const).map(([status,label,count])=><Link href={href(status)} key={status}><span>{label}</span><strong>{count.toLocaleString("en-US")}</strong><small>payment{count===1?"":"s"}</small></Link>)}
+    </section>
+    <details className="rfl-home-help"><summary>About these totals</summary><div><p>Counts cover the whole selected billing month, independently of list filters. Paid records are not verified bank payouts.</p><p>{REPORT_STATE_HELP}</p><p>Standard payments use their recorded billing cycle; Custom payments use their original transaction month in the display timezone.</p><p>Original transaction dates show when the payment record was created, not settlement or refund dates.</p><p>{p.legacyTimeZone?"UTC display compatibility: property timezone is not configured.":"Display timezone: "+p.timeZone}</p></div></details>
+    <section className="rfl-dashboard-payments rfl-home-payments"><header className="rfl-dashboard-payments-header"><h2>Payments <span>{p.total.toLocaleString("en-US")}</span></h2>
+      <button className="rfl-home-share" onClick={sharePaymentLink} type="button">Share payment link <span aria-hidden="true">{"\u2197"}</span></button></header>
+      <p className="rfl-home-share-message" role="status">{shareMessage}</p>
+      <nav className="rfl-dashboard-filters" aria-label="Filter payments">{[["ALL","All"],["PENDING","Pending"],["SUCCESSFUL","Paid"],["FAILED","Issues"]].map(([value,label])=>
+        <Link key={value} aria-current={p.filters.status===value?"page":undefined} className={"rfl-dashboard-filter"+(p.filters.status===value?" rfl-dashboard-filter-active":"")} href={href(value)}>{label}</Link>)}</nav>
+      {p.payments.length===0?<div className="rfl-dashboard-empty"><span className="rfl-home-empty-symbol" aria-hidden="true">{"\u2197"}</span><h3>{p.filters.status==="ALL" && p.total===0?"No payments yet":"No matching payments"}</h3><p>{p.filters.status==="ALL"?"Share your link so customers can make a payment.":"Try another filter or billing month."}</p><a href={"/"+p.accountCode}>Open payment page</a></div>:
+      <table className="rfl-dashboard-table rfl-home-table"><thead><tr>{["Customer / unit","Amount","Status","Details"].map(h=><th scope="col" key={h}>{h}</th>)}</tr></thead>
+        <tbody>{p.payments.map(row=><tr key={row.id}>
+          <td><strong>{row.customerName}</strong><span className="rfl-home-row-meta">Unit / reference: {row.reference}</span></td>
+          <td className="rfl-home-row-amount">{money(row.amountCents)}</td>
           <td><span className={"rfl-payment-status rfl-payment-status-"+(row.status==="SUCCESSFUL"?"paid":row.status.toLowerCase())}>{row.statusDetail}</span></td>
-          <td>{row.paymentMethod}</td><td><time dateTime={row.timestamp} title={row.timestamp}>{date(row.timestamp)}</time></td><td>{row.paymentType}</td></tr>)}</tbody></table></div>}
-      <nav aria-label="Transaction pages"><p>Page {p.filters.page} of {Math.max(1,Math.ceil(p.total/REPORT_PAGE_SIZE))}</p>
-        {p.filters.page>1?<Link href={href(p.filters.status,p.filters.page-1)}>Previous</Link>:null}{" "}
-        {p.filters.page*REPORT_PAGE_SIZE<p.total?<Link href={href(p.filters.status,p.filters.page+1)}>Next</Link>:null}</nav>
+          <td><time dateTime={row.timestamp} title={row.timestamp}>{date(row.timestamp)}</time><span className="rfl-home-row-meta">{row.paymentMethod} {"\u00b7"} {row.paymentType}</span></td>
+        </tr>)}</tbody></table>}
+      {pages>1?<nav className="rfl-home-pagination" aria-label="Transaction pages"><span>Page {p.filters.page} of {pages}</span>
+        {p.filters.page>1?<Link href={href(p.filters.status,p.filters.page-1)}>Previous</Link>:null}
+        {p.filters.page<pages?<Link href={href(p.filters.status,p.filters.page+1)}>Next</Link>:null}</nav>:null}
     </section>
   </main>;
 }

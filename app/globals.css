@@ -4772,3 +4772,85 @@ input:focus-visible {
   grid-template-rows: auto;
   min-width: 0;
 }
+
+/* Manager overview: compact controls and payment cards, mobile first. */
+.rfl-manager-home { max-width: 1060px; padding-top: 24px; }
+.rfl-home-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.rfl-home-identity { min-width:0; }
+.rfl-home-header h1 { font-size:clamp(24px,4vw,32px); line-height:1.2; letter-spacing:-.035em; margin:6px 0 12px; overflow-wrap:anywhere; }
+.rfl-home-header .rfl-eyebrow { margin:0; font-size:11px; }
+.rfl-home-code { background:#e8f0e9; border:1px solid #b9cdbd; border-radius:9px; padding:10px 14px; font:inherit; font-weight:700; cursor:pointer; letter-spacing:.08em; }
+.rfl-home-code span { margin-left:12px; }
+.rfl-home-menu { position:relative; flex-shrink:0; }
+.rfl-home-menu summary { cursor:pointer; padding:12px; border:1px solid #b9cdbd; border-radius:10px; font-size:14px; }
+.rfl-home-menu>div { position:absolute; right:0; top:52px; z-index:10; width:220px; padding:16px; background:white; border:1px solid #b9cdbd; border-radius:12px; box-shadow:0 10px 30px #173c2420; }
+.rfl-home-menu p { font-size:13px; overflow-wrap:anywhere; margin:0 0 8px; }
+.rfl-home-menu a,.rfl-home-menu button { display:block; padding:12px 0; color:inherit; font:inherit; background:none; border:0; text-decoration:none; cursor:pointer; }
+.rfl-home-readiness { font-size:12px; padding:14px 0; }
+.rfl-home-readiness.is-ready { color:#356d46; }
+.rfl-home-readiness strong { font-weight:500; }
+.rfl-home-readiness>span { margin-right:5px; }
+.rfl-home-nav { display:flex; gap:24px; border-bottom:1px solid #d7e1d8; margin:4px 0 26px; }
+.rfl-home-nav a { padding:14px 0; text-decoration:none; color:#52665b; font-size:14px; font-weight:600; }
+.rfl-home-nav a[aria-current] { color:#204e34; border-bottom:3px solid #477a55; }
+.rfl-home-month { display:flex; flex-direction:column; gap:16px; margin-bottom:20px; }
+.rfl-home-month h2 { margin:4px 0 0; font-size:24px; letter-spacing:-.03em; }
+.rfl-home-month .rfl-eyebrow { margin:0; font-size:11px; }
+.rfl-home-month form label { display:block; font-size:12px; margin-bottom:5px; color:#52665b; }
+.rfl-home-month form>div { display:flex; gap:8px; }
+.rfl-home-month input { min-width:0; width:auto; flex:1; padding:10px; border:1px solid #b9cdbd; border-radius:8px; background:white; font:inherit; }
+.rfl-home-month button { padding:10px 16px; border:1px solid #b9cdbd; border-radius:8px; background:#e8f0e9; font:inherit; cursor:pointer; }
+.rfl-home-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.rfl-home-summary a { padding:16px 10px; min-width:0; background:white; border:1px solid #d7e1d8; border-radius:14px; text-decoration:none; color:inherit; }
+.rfl-home-summary span { display:block; font-size:12px; min-height:34px; color:#52665b; }
+.rfl-home-summary strong { display:block; font-size:30px; line-height:1.2; font-variant-numeric:tabular-nums; }
+.rfl-home-summary small { display:block; font-size:11px; color:#52665b; margin-top:4px; }
+.rfl-home-summary a:last-child strong { color:#875b29; }
+.rfl-home-help { margin:14px 0 24px; font-size:12px; color:#52665b; }
+.rfl-home-help summary { cursor:pointer; width:fit-content; padding:8px 0; }
+.rfl-home-help>div { background:#eef3ee; padding:10px 16px; border-radius:10px; line-height:1.6; }
+.rfl-home-help p { margin:6px 0; }
+.rfl-home-payments { overflow:hidden; border-color:#d7e1d8; box-shadow:0 6px 24px #173c2408; border-radius:16px; }
+.rfl-home-payments .rfl-dashboard-payments-header { padding:20px 16px 8px; border:0; display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.rfl-home-payments h2 { font-size:20px; margin:0; }
+.rfl-home-payments h2 span { font-size:12px; color:#52665b; padding-left:6px; }
+.rfl-home-share { border:0; background:#285c3c; color:white; border-radius:9px; padding:12px 14px; font:inherit; font-size:13px; cursor:pointer; }
+.rfl-home-share-message { margin:0 16px; font-size:12px; }
+.rfl-home-share-message:empty { display:none; }
+.rfl-home-payments .rfl-dashboard-filters { display:flex; width:auto; margin:12px 16px 16px; padding:4px; border:0; border-radius:10px; gap:2px; }
+.rfl-home-payments .rfl-dashboard-filter { flex:1; text-align:center; padding:10px 4px; font-size:12px; border-radius:7px; white-space:nowrap; }
+.rfl-home-payments .rfl-dashboard-filter-active { background:white; color:#204e34; box-shadow:0 1px 5px #173c2418; }
+.rfl-home-payments .rfl-dashboard-empty { padding:30px 20px 40px; }
+.rfl-home-empty-symbol { display:grid; place-items:center; margin:0 auto 16px; width:48px; height:48px; background:#edf3ee; color:#477a55; border-radius:14px; font-size:24px; }
+.rfl-home-payments .rfl-dashboard-empty h3 { font-size:19px; margin:0 0 8px; }
+.rfl-home-payments .rfl-dashboard-empty p { font-size:14px; margin:0 auto 16px; max-width:300px; }
+.rfl-home-payments .rfl-dashboard-empty a { font-size:13px; color:#285c3c; text-underline-offset:4px; padding:10px; }
+.rfl-home-table { width:100%; }
+.rfl-home-table thead { display:none; }
+.rfl-home-table tbody { display:block; }
+.rfl-home-table tr { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; padding:18px 16px; border-top:1px solid #e6ece7; }
+.rfl-home-table td { border:0; padding:0; font-size:13px; overflow-wrap:anywhere; }
+.rfl-home-table td:nth-child(2) { text-align:right; font-size:17px; font-weight:650; white-space:nowrap; }
+.rfl-home-table td:last-child { text-align:right; font-size:11px; color:#52665b; }
+.rfl-home-row-meta { display:block; margin-top:5px; font-size:11px; color:#52665b; }
+.rfl-home-table .rfl-payment-status { white-space:normal; font-size:11px; }
+.rfl-home-pagination { display:flex; gap:20px; align-items:center; padding:18px 16px; border-top:1px solid #e6ece7; font-size:13px; }
+.rfl-home-pagination span { margin-right:auto; }
+.rfl-manager-home :is(a,button,summary,input):focus-visible { outline:3px solid #477a55; outline-offset:3px; }
+@media(min-width:640px) {
+ .rfl-manager-home { padding-top:32px; }
+ .rfl-home-month { flex-direction:row; justify-content:space-between; align-items:center; }
+ .rfl-home-summary { gap:16px; }
+ .rfl-home-summary a { padding:20px 24px; }
+ .rfl-home-summary span { min-height:0; }
+ .rfl-home-summary strong { margin-top:12px; font-size:34px; }
+ .rfl-home-payments .rfl-dashboard-payments-header { justify-content:space-between; padding:24px 24px 8px; }
+ .rfl-home-payments .rfl-dashboard-filters { margin-left:24px; margin-right:24px; max-width:400px; }
+ .rfl-home-table { display:table; table-layout:fixed; }
+ .rfl-home-table thead { display:table-header-group; }
+ .rfl-home-table tbody { display:table-row-group; }
+ .rfl-home-table tr { display:table-row; }
+ .rfl-home-table :is(th,td) { padding:18px 24px; border-top:1px solid #e6ece7; }
+ .rfl-home-table th { font-size:11px; }
+ .rfl-home-table td:nth-child(2),.rfl-home-table td:last-child { text-align:left; }
+}
