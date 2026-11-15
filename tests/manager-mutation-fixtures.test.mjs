@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { Readable } from 'node:stream';
+import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { authHarness } from './helpers/auth-harness.mjs';
@@ -59,6 +61,91 @@ test('V01 DELETE still rejects even an empty JSON object body', async () => {
   assert.deepEqual(await businessState(h), before);
 });
 
+
+const require = createRequire(import.meta.url);
+const { NextRequestAdapter } = require('next/dist/server/web/spec-extension/adapters/next-request.js');
+const { NodeNextRequest } = require('next/dist/server/base-http/node.js');
+function adaptedDelete(chunks = [], headers = {}) {
+  const incoming = Readable.from(chunks);
+  incoming.method = 'DELETE'; incoming.url = 'https://example.test/api';
+  incoming.headers = { origin: 'https://example.test', ...headers };
+  return NextRequestAdapter.fromNodeNextRequest(new NodeNextRequest(incoming), new AbortController().signal);
+}
+for (const [name, request] of [
+  ['Next zero-length stream', () => adaptedDelete([], { 'content-length': '0' })],
+  ['Next empty stream without content-length', () => adaptedDelete()],
+  ['empty string body', () => new Request('https://example.test/api', { method: 'DELETE', headers: { origin: 'https://example.test', 'content-length': '0' }, body: '' })],
+]) test('DELETE empty-body regression: ' + name, async () => {
+  const h = await deletionFixture('ADMIN'), req = request(); assert.ok(req.body);
+  const response = await remove(h, req);
+  assert.equal(response.status, 200); assert.equal((await response.json()).action, 'deactivated');
+  assert.equal((await h.db.business.findUnique({ where: { id: h.businesses[0].id } })).isActive, false);
+  assert.equal(await h.db.auditLog.count({ where: { action: 'BUSINESS_DEACTIVATED' } }), 1);
+});
+for (const [name, chunks, headers] of [
+  ['JSON object', [Buffer.from('{}')], {}],
+  ['whitespace', [Buffer.from(' ')], {}],
+  ['malformed JSON', [Buffer.from('{bad')], {}],
+  ['binary byte', [Buffer.from([0])], {}],
+  ['large chunk', [Buffer.alloc(65536)], {}],
+  ['dishonest zero length', [Buffer.from('x')], { 'content-length': '0' }],
+  ['positive length', [Buffer.from('x')], { 'content-length': '1' }],
+  ['missing declared bytes', [], { 'content-length': '1' }],
+  ['malformed length', [], { 'content-length': 'bad' }],
+]) test('DELETE rejects nonempty or invalid framing before authorization: ' + name, async () => {
+  const h = await deletionFixture('ADMIN'), before = await businessState(h);
+  h.db.$transaction = async () => { throw Error('Unexpected database transaction'); };
+  const response = await remove(h, adaptedDelete(chunks, headers));
+  assert.equal(response.status, 400); assert.deepEqual(await response.json(), { error: 'This action does not accept a request body.' });
+  assert.deepEqual(await businessState(h), before);
+});
+for (const origin of ['https://foreign.invalid', null]) test('DELETE empty stream retains origin checks: ' + origin, async () => {
+  const h = await deletionFixture('ADMIN'), before = await businessState(h), req = adaptedDelete();
+  if (origin === null) req.headers.delete('origin'); else req.headers.set('origin', origin);
+  assert.equal((await remove(h, req)).status, 403); assert.equal(req.bodyUsed, false);
+  assert.deepEqual(await businessState(h), before);
+});
+test('DELETE empty stream rejects cross-site metadata', async () => {
+  const h = await deletionFixture('ADMIN'), before = await businessState(h), req = adaptedDelete([], { 'sec-fetch-site': 'cross-site' });
+  assert.equal((await remove(h, req)).status, 403); assert.equal(req.bodyUsed, false);
+  assert.deepEqual(await businessState(h), before);
+});
+for (const type of [null, 'MANAGER', 'revoked', 'inactive']) test('DELETE empty stream preserves authorization: ' + type, async () => {
+  const h = await deletionFixture(type === 'revoked' || type === 'inactive' ? 'ADMIN' : type), before = await businessState(h);
+  if (type === 'revoked') await h.db.session.deleteMany({ where: { type: 'ADMIN' } });
+  if (type === 'inactive') await h.db.adminAccess.update({ where: { id: h.admins[0].id }, data: { isActive: false } });
+  assert.equal((await remove(h, adaptedDelete())).status, 401);
+  assert.deepEqual(await businessState(h), before);
+});
+test('DELETE empty stream preserves checkout-only financial retention', async () => {
+  const h = await deletionFixture('ADMIN'); h.db.payment = { findFirst: async () => null };
+  h.db.checkoutSession = { findFirst: async () => ({ id: 'retained-checkout' }) };
+  const response = await remove(h, adaptedDelete([], { 'content-length': '0' }));
+  assert.equal(response.status, 200); assert.equal((await response.json()).action, 'deactivated');
+  assert.ok(await h.db.business.findUnique({ where: { id: h.businesses[0].id } }));
+  assert.equal(await h.db.auditLog.count({ where: { action: 'BUSINESS_DEACTIVATED' } }), 1);
+});
+function streamedDelete(body) {
+  return new Request('https://example.test/api', { method: 'DELETE', headers: { origin: 'https://example.test' }, body, duplex: 'half' });
+}
+test('DELETE broken stream fails without mutation', async () => {
+  const h = await deletionFixture('ADMIN'), before = await businessState(h);
+  const req = streamedDelete(new ReadableStream({ start(controller) { controller.error(Error('Synthetic read failure')); } }));
+  assert.equal((await remove(h, req)).status, 400); assert.deepEqual(await businessState(h), before);
+});
+test('DELETE stalled stream times out and cancels without mutation', async t => {
+  const h = await deletionFixture('ADMIN'), before = await businessState(h); let cancelled = false;
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pending = remove(h, streamedDelete(new ReadableStream({ cancel() { cancelled = true; } })));
+  await Promise.resolve(); t.mock.timers.tick(10000);
+  assert.equal((await pending).status, 400); assert.equal(cancelled, true); assert.deepEqual(await businessState(h), before);
+});
+test('DELETE endless empty chunks fail closed without mutation', async () => {
+  const h = await deletionFixture('ADMIN'), before = await businessState(h); let cancelled = false;
+  const req = streamedDelete(new ReadableStream({ pull(controller) { controller.enqueue(new Uint8Array()); }, cancel() { cancelled = true; } }));
+  assert.equal((await remove(h, req)).status, 400); assert.equal(cancelled, true); assert.deepEqual(await businessState(h), before);
+});
+
 test('V01 streamed pause begins at the actual reader and releases valid JSON', async () => {
   const h = await authHarness(), { publicJson } = h.load('lib/publicJson.ts');
   let authorize, read = false, finished = false;
@@ -113,7 +200,7 @@ const contracts = {
   'lib/adminMutation.ts': 'b138e79251c22a6a14fa150edb899d61caa2c99cbe2d1ec1d6ccc2bedbf504fe',
   'lib/managerMutation.ts': '7ad15222829d23f0bac0ddea4931792a02fc00c695bec250f687f0b054931247',
   'lib/publicJson.ts': '24c016722a58a5e3b7963e3af7f3249898fe498b4453b73cd477d69728bbebe1',
-  'app/api/admin/businesses/[businessId]/route.ts': 'e316bbae6cc1f9523b723bb7de63167b418de5d0bf3ab8e645b00839d8dac609',
+  'app/api/admin/businesses/[businessId]/route.ts': 'd41d49858f7a4e2368f36c274f359a177b2eefae953de809f65265ad6dbd4345',
 };
 const checkContract = (file, source) => assert.equal(createHash('sha256').update(source.replaceAll('\r\n', '\n')).digest('hex'), contracts[file], file);
 test('V01 protects complete current locking, parser and deletion contracts', () => {

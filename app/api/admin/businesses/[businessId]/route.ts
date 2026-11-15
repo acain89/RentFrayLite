@@ -1,3 +1,4 @@
+import { boundedRawBody } from "@/lib/boundedRawBody";
 import { requireCredentialOrigin } from "@/lib/credentialRequest";
 import { BusinessStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
@@ -8,7 +9,12 @@ type RouteContext = { params: Promise<{ businessId: string }> };
 
 export async function DELETE(request: Request, context: RouteContext): Promise<NextResponse> {
   try { requireCredentialOrigin(request); } catch { return NextResponse.json({ error: "Invalid request origin." }, { status: 403 }); }
-  if (request.body) return NextResponse.json({ error: "This action does not accept a request body." }, { status: 400 });
+  // Next.js can expose a zero-byte DELETE as a non-null stream.
+  // Validate the actual byte count rather than stream presence.
+  if (request.body) {
+    try { await boundedRawBody(request, 0); }
+    catch { return NextResponse.json({ error: "This action does not accept a request body." }, { status: 400 }); }
+  }
 
   try { return await deleteBusiness(context); }
   catch (error) {
