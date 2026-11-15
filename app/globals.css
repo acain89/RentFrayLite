@@ -2443,6 +2443,14 @@ input:focus-visible {
 .rfl-payment-result-summary strong { min-width: 0; overflow-wrap: anywhere; }
 .rfl-payment-result-actions { display: grid; gap: 12px; margin-top: 24px; }
 .rfl-payment-result-actions a { display: block; text-align: center; text-decoration: none; }
+.rfl-payment-result-actions .rfl-primary-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 20px;
+  box-sizing: border-box;
+  line-height: 1.4;
+}
 
 @media (max-width: 480px) {
   .rfl-payment-result-page { padding: 16px; }
