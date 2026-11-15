@@ -4854,3 +4854,94 @@ input:focus-visible {
  .rfl-home-table th { font-size:11px; }
  .rfl-home-table td:nth-child(2),.rfl-home-table td:last-child { text-align:left; }
 }
+
+
+/* Payment review: centered card and touch-friendly controls. */
+.rfl-payment-review-page {
+  width: 100%;
+  padding: 20px 12px 40px;
+}
+.rfl-payment-review-page .rfl-review-shell {
+  width: 100%;
+  max-width: 760px;
+  min-width: 0;
+  margin-inline: auto;
+}
+.rfl-payment-review-page .rfl-review-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 24px 18px;
+  border-radius: 20px;
+}
+.rfl-payment-review-page .rfl-review-heading h1 {
+  margin: 8px 0 12px;
+  font-size: clamp(26px, 5vw, 34px);
+  line-height: 1.2;
+  letter-spacing: -.035em;
+}
+.rfl-payment-review-page .rfl-review-heading > p:last-child {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.rfl-payment-review-page .rfl-review-details-grid,
+.rfl-payment-review-page .rfl-review-date-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  border: 0;
+  background: transparent;
+}
+.rfl-payment-review-page .rfl-review-details-grid > div,
+.rfl-payment-review-page .rfl-review-date-grid > div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #dce6de;
+  border-radius: 12px;
+  background: #f7faf8;
+  overflow-wrap: anywhere;
+}
+.rfl-payment-review-page .rfl-review-line-item,
+.rfl-payment-review-page .rfl-review-total-row {
+  gap: 16px;
+}
+.rfl-payment-review-page .rfl-review-line-item > span { min-width: 0; overflow-wrap: anywhere; }
+.rfl-payment-review-page .rfl-review-line-item > strong,
+.rfl-payment-review-page .rfl-review-total-row > strong { flex-shrink: 0; white-space: nowrap; }
+.rfl-payment-review-page .rfl-review-assurances { padding: 16px; font-size: 14px; }
+.rfl-payment-review-page .rfl-review-assurances ul { gap: 8px; font-size: 12px; }
+.rfl-payment-review-page .rfl-review-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+.rfl-payment-review-page .rfl-review-actions > :is(a, button) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px 16px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+.rfl-payment-review-page .rfl-review-actions > button { order: -1; background: #285c3c; color: #fff; border: 1px solid #285c3c; cursor: pointer; }
+.rfl-payment-review-page .rfl-review-actions > button:disabled { opacity: .6; cursor: wait; }
+.rfl-payment-review-page :is(a, button, input):focus-visible { outline: 3px solid #477a55; outline-offset: 3px; }
+.rfl-payment-review-page .rfl-review-error { width: 100%; margin: 0; }
+@media (min-width: 480px) {
+  .rfl-payment-review-page .rfl-review-details-grid,
+  .rfl-payment-review-page .rfl-review-date-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 640px) {
+  .rfl-payment-review-page { padding: 40px 24px 64px; }
+  .rfl-payment-review-page .rfl-review-card { padding: 32px; }
+  .rfl-payment-review-page .rfl-review-actions { display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); }
+  .rfl-payment-review-page .rfl-review-actions > button { order: 0; }
+  .rfl-payment-review-page .rfl-review-error { grid-column: 1 / -1; }
+}

@@ -100,7 +100,6 @@ export default function ReviewPaymentClient({
   sourceType = "RECURRING_PLAN",
   attemptReserved = false,
   checkoutSessionId,
-  businessName,
   accountCode,
   unitNumber,
   firstName,
@@ -188,27 +187,15 @@ async function beginCheckout() {
 }
 
   return (
-    <main className="rfl-public-checkout-page">
+    <main className="rfl-public-checkout-page rfl-payment-review-page">
       <section className="rfl-checkout-shell rfl-review-shell">
-        <header className="rfl-checkout-header">
-          <p className="rfl-checkout-brand">
-            RentFrayLite
-          </p>
-
-          <h1>{businessName}</h1>
-
-          <p className="rfl-checkout-code">
-            Account code: {accountCode}
-          </p>
-        </header>
-
         <div className="rfl-review-card">
           <div className="rfl-review-heading">
             <p className="rfl-review-eyebrow">
               Final step
             </p>
 
-            <h2>Review Payment</h2>
+            <h1>Review Payment</h1>
 
             <p>
               Confirm the information and amount
@@ -256,12 +243,8 @@ async function beginCheckout() {
             </div>
 
             <div>
-              <span>Session</span>
-              <strong>
-                {checkoutSessionId.slice(
-                  -8
-                )}
-              </strong>
+              <span>Account</span>
+              <strong>{accountCode}</strong>
             </div>
           </div>
 
@@ -395,7 +378,7 @@ async function beginCheckout() {
     : "Continue to Secure Payment"}
            </button>
             {error && (
-            <p className="rfl-review-error">
+            <p className="rfl-review-error" role="alert">
              {error}
              </p>
              )}
