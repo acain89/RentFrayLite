@@ -40,6 +40,10 @@ export default async function ManagerSettingsPage() {
           className="rfl-settings-links"
           aria-label="Account configuration"
         >
+          <Link className="rfl-settings-link" href="/manager/settings/banking">
+            <span>Banking &amp; payouts</span><span aria-hidden="true">›</span>
+          </Link>
+
           <Link
             className="rfl-settings-link"
             href="/manager/settings/tiers"

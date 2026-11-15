@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -75,6 +77,8 @@ export default function HomePage() {
             Continue
           </button>
         </form>
+
+        <Link href="/new-here" className="rfl-new-here"><span className="rfl-new-here-icon" aria-hidden="true">?</span><span><strong>New here?</strong><small>See how RentFrayLite works</small></span><span aria-hidden="true">→</span></Link>
 
         <div className="rfl-secondary-actions">
           <button
