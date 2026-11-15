@@ -20,6 +20,7 @@ export type DashboardPayment = {
   status: DashboardPaymentStatus;
   statusDetail: string;
   customerName: string;
+  tierLabel: string;
   reference: string;
   amountCents: number;
   paymentMethod: "ACH" | "CARD" | "-";
@@ -52,4 +53,13 @@ export function getDashboardStatus(status: PaymentStatus): DashboardPaymentStatu
 
 export function getPaymentMethodLabel(method: PaymentMethod | null): "ACH" | "CARD" | "-" {
   return method === PaymentMethod.ACH ? "ACH" : method === PaymentMethod.CARD ? "CARD" : "-";
+}
+
+// Use the immutable base line, never the current plan name or generic description.
+export function getDashboardTierLabel(sourceType: string, snapshot: unknown): string {
+  if (sourceType === "CUSTOM_PAYMENT") return "Custom payment";
+  if (!Array.isArray(snapshot)) return "Not recorded";
+  const bases = snapshot.filter(item => item && typeof item === "object" && !Array.isArray(item) && item.type === "BASE_AMOUNT");
+  if (bases.length !== 1 || typeof bases[0].label !== "string" || !bases[0].label.trim()) return "Not recorded";
+  return bases[0].label.trim();
 }

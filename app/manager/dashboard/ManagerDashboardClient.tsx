@@ -60,7 +60,7 @@ export default function ManagerDashboardClient(p:Props) {
       <form action="/manager/dashboard"><label htmlFor="dashboard-cycle">Choose month</label><div><input id="dashboard-cycle" type="month" name="cycle" required defaultValue={p.billingCycle}/><button type="submit">View</button></div></form>
     </section>
     <section className="rfl-home-summary" aria-label="Monthly payment counts">
-      {([["SUCCESSFUL","Paid",p.summary.paid],["PENDING","Pending",p.summary.pending],["FAILED","Needs attention",p.summary.issues]] as const).map(([status,label,count])=><Link href={href(status)} key={status}><span>{label}</span><strong>{count.toLocaleString("en-US")}</strong><small>payment{count===1?"":"s"}</small></Link>)}
+      {([["SUCCESSFUL","Paid",p.summary.paid],["PENDING","Pending",p.summary.pending],["FAILED","Needs attention",p.summary.issues]] as const).map(([status,label,count])=><Link href={href(status)} key={status} className={"rfl-summary-"+status.toLowerCase()}><span><i className="rfl-board-dot" aria-hidden="true"/>{label}</span><strong>{count.toLocaleString("en-US")}</strong><small>payment{count===1?"":"s"}</small></Link>)}
     </section>
     <details className="rfl-home-help"><summary>About these totals</summary><div><p>Counts cover the whole selected billing month, independently of list filters. Paid records are not verified bank payouts.</p><p>{REPORT_STATE_HELP}</p><p>Standard payments use their recorded billing cycle; Custom payments use their original transaction month in the display timezone.</p><p>Original transaction dates show when the payment record was created, not settlement or refund dates.</p><p>{p.legacyTimeZone?"UTC display compatibility: property timezone is not configured.":"Display timezone: "+p.timeZone}</p></div></details>
     <section className="rfl-dashboard-payments rfl-home-payments"><header className="rfl-dashboard-payments-header"><h2>Payments <span>{p.total.toLocaleString("en-US")}</span></h2>
@@ -68,14 +68,15 @@ export default function ManagerDashboardClient(p:Props) {
       <p className="rfl-home-share-message" role="status">{shareMessage}</p>
       <nav className="rfl-dashboard-filters" aria-label="Filter payments">{[["ALL","All"],["PENDING","Pending"],["SUCCESSFUL","Paid"],["FAILED","Issues"]].map(([value,label])=>
         <Link key={value} aria-current={p.filters.status===value?"page":undefined} className={"rfl-dashboard-filter"+(p.filters.status===value?" rfl-dashboard-filter-active":"")} href={href(value)}>{label}</Link>)}</nav>
-      {p.payments.length===0?<div className="rfl-dashboard-empty"><span className="rfl-home-empty-symbol" aria-hidden="true">{"\u2197"}</span><h3>{p.filters.status==="ALL" && p.total===0?"No payments yet":"No matching payments"}</h3><p>{p.filters.status==="ALL"?"Share your link so customers can make a payment.":"Try another filter or billing month."}</p><a href={"/"+p.accountCode}>Open payment page</a></div>:
-      <table className="rfl-dashboard-table rfl-home-table"><thead><tr>{["Customer / unit","Amount","Status","Details"].map(h=><th scope="col" key={h}>{h}</th>)}</tr></thead>
-        <tbody>{p.payments.map(row=><tr key={row.id}>
-          <td><strong>{row.customerName}</strong><span className="rfl-home-row-meta">Unit / reference: {row.reference}</span></td>
-          <td className="rfl-home-row-amount">{money(row.amountCents)}</td>
-          <td><span className={"rfl-payment-status rfl-payment-status-"+(row.status==="SUCCESSFUL"?"paid":row.status.toLowerCase())}>{row.statusDetail}</span></td>
-          <td><time dateTime={row.timestamp} title={row.timestamp}>{date(row.timestamp)}</time><span className="rfl-home-row-meta">{row.paymentMethod} {"\u00b7"} {row.paymentType}</span></td>
-        </tr>)}</tbody></table>}
+      <table className="rfl-dashboard-table rfl-home-table rfl-payment-board"><thead><tr>{["Status","Amount","Name","Tier","Unit"].map(h=><th scope="col" key={h}>{h}</th>)}</tr></thead>
+        <tbody>{p.payments.map(row=><tr key={row.id} className={"rfl-board-"+row.status.toLowerCase()}>
+          <td data-label="Status"><span className={"rfl-payment-status rfl-payment-status-"+(row.status==="SUCCESSFUL"?"paid":row.status.toLowerCase())}><i className="rfl-board-dot" aria-hidden="true"/>{row.statusDetail}</span></td>
+          <td data-label="Amount" className="rfl-home-row-amount">{money(row.amountCents)}</td>
+          <td data-label="Name"><strong>{row.customerName}</strong><span className="rfl-home-row-meta"><time dateTime={row.timestamp} title={row.timestamp}>{date(row.timestamp)}</time> {"\u00b7"} {row.paymentMethod}</span></td>
+          <td data-label="Tier">{row.tierLabel}</td>
+          <td data-label="Unit">{row.reference}</td>
+        </tr>)}</tbody></table>
+      {p.payments.length===0?<div className="rfl-dashboard-empty"><span className="rfl-home-empty-symbol" aria-hidden="true">{"\u2197"}</span><h3>{p.filters.status==="ALL" && p.total===0?"No payments yet":"No matching payments"}</h3><p>{p.filters.status==="ALL"?"Share your link so customers can make a payment.":"Try another filter or billing month."}</p><a href={"/"+p.accountCode}>Open payment page</a></div>:null}
       {pages>1?<nav className="rfl-home-pagination" aria-label="Transaction pages"><span>Page {p.filters.page} of {pages}</span>
         {p.filters.page>1?<Link href={href(p.filters.status,p.filters.page-1)}>Previous</Link>:null}
         {p.filters.page<pages?<Link href={href(p.filters.status,p.filters.page+1)}>Next</Link>:null}</nav>:null}

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { isValidBillingCycle } from "@/lib/billingCalendar";
 import { redirect } from "next/navigation";
 import { requireManager } from "@/lib/auth";
-import { formatBillingCycleLabel, getCurrentBillingCycle, getDashboardPaymentScope, getDashboardStatus, getPaymentMethodLabel, type DashboardPayment } from "@/lib/dashboard";
+import { formatBillingCycleLabel, getCurrentBillingCycle, getDashboardPaymentScope, getDashboardStatus, getDashboardTierLabel, getPaymentMethodLabel, type DashboardPayment } from "@/lib/dashboard";
 import { prisma } from "@/lib/prisma";
 import { getSetupRoute } from "@/lib/setupProgress";
 import { loadBusinessPaymentReadiness } from "@/lib/businessPaymentReadiness";
@@ -49,6 +49,7 @@ export default async function ManagerDashboardPage(props: {searchParams?: Promis
   const payments: DashboardPayment[] = report.payments.map(payment => ({
     id: payment.id, paymentType: payment.paymentType as "Custom" | "Standard", status: getDashboardStatus(payment.status)!,
     statusDetail: payment.statusLabel, customerName: [payment.payerFirstName,payment.payerLastName].join(" "),
+    tierLabel: getDashboardTierLabel(payment.sourceType, payment.lineItemsSnapshot),
     reference: payment.referenceLabel ?? "-", amountCents: payment.subtotalCents,
     paymentMethod: getPaymentMethodLabel(payment.paymentMethod), timestamp: payment.timestamp,
   }));

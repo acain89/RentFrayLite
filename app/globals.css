@@ -4945,3 +4945,47 @@ input:focus-visible {
   .rfl-payment-review-page .rfl-review-actions > button { order: 0; }
   .rfl-payment-review-page .rfl-review-error { grid-column: 1 / -1; }
 }
+
+/* Payment board: restrained color, labeled segments, mobile-first cards. */
+.rfl-home-summary .rfl-summary-successful { background:#edf7ef; border-color:#bdd9c4; color:#245938; }
+.rfl-home-summary .rfl-summary-pending { background:#fff8e5; border-color:#e7d59e; color:#775713; }
+.rfl-home-summary .rfl-summary-failed { background:#fdf0ee; border-color:#e8c2bb; color:#8c382d; }
+.rfl-home-summary a span,.rfl-home-summary a small,.rfl-home-summary a:last-child strong { color:inherit; }
+.rfl-board-dot { display:inline-block; width:8px; height:8px; flex:0 0 8px; border-radius:50%; background:currentColor; margin-right:7px; }
+.rfl-summary-successful .rfl-board-dot,.rfl-board-successful .rfl-board-dot { color:#30814a; }
+.rfl-summary-pending .rfl-board-dot,.rfl-board-pending .rfl-board-dot { color:#b5810b; }
+.rfl-summary-failed .rfl-board-dot,.rfl-board-failed .rfl-board-dot { color:#bc4c3d; }
+.rfl-payment-board { border-collapse:collapse; }
+.rfl-payment-board tr { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px 12px; border-left:3px solid #d7e1d8; }
+.rfl-payment-board tr.rfl-board-successful { border-left-color:#80b88f; }
+.rfl-payment-board tr.rfl-board-pending { border-left-color:#d8b24b; }
+.rfl-payment-board tr.rfl-board-failed { border-left-color:#d18a7e; }
+.rfl-payment-board td[data-label] { text-align:left; font-size:14px; color:#233b2d; }
+.rfl-payment-board td[data-label]::before { content:attr(data-label); display:block; font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#596e61; margin-bottom:6px; }
+.rfl-payment-board td[data-label="Amount"] { text-align:right; font-size:19px; }
+.rfl-payment-board td[data-label="Name"] { grid-column:1/-1; padding-top:12px; border-top:1px solid #e6ece7; }
+.rfl-payment-board td[data-label="Tier"],.rfl-payment-board td[data-label="Unit"] { background:#f5f8f5; padding:10px; border-radius:8px; }
+.rfl-payment-board .rfl-payment-status { display:inline-flex; align-items:center; padding:0; background:transparent; font-size:12px; line-height:1.5; }
+.rfl-home-payments .rfl-dashboard-empty { padding:20px 20px 28px; }
+.rfl-home-payments .rfl-home-empty-symbol { width:36px; height:36px; font-size:20px; margin-bottom:12px; }
+@media (min-width:800px) {
+ .rfl-payment-board thead { display:table-header-group; background:#f0f5f1; }
+ .rfl-payment-board tbody { display:table-row-group; }
+ .rfl-payment-board tr { display:table-row; border-left:0; }
+ .rfl-payment-board th { padding:12px 16px; color:#52665a; font-size:11px; }
+ .rfl-payment-board th:nth-child(1) { width:22%; }
+ .rfl-payment-board th:nth-child(2) { width:15%; }
+ .rfl-payment-board th:nth-child(3) { width:28%; }
+ .rfl-payment-board th:nth-child(4) { width:23%; }
+ .rfl-payment-board th:nth-child(5) { width:12%; }
+ .rfl-payment-board td[data-label] { padding:18px 16px; vertical-align:top; border-top:1px solid #e6ece7; }
+ .rfl-payment-board td[data-label]::before { display:none; }
+ .rfl-payment-board td[data-label="Amount"] { text-align:left; font-size:16px; }
+ .rfl-payment-board td[data-label="Tier"],.rfl-payment-board td[data-label="Unit"] { background:transparent; border-radius:0; }
+ .rfl-payment-board th+th,.rfl-payment-board td+td { border-left:1px solid #e6ece7; }
+}
+@media (min-width:640px) and (max-width:799px) {
+ .rfl-payment-board thead { display:none; }
+ .rfl-payment-board tbody { display:block; }
+ .rfl-payment-board tr { display:grid; }
+}

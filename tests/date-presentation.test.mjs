@@ -84,3 +84,21 @@ test("large exports reuse a report-local formatter without allocating one per ro
  try{const result=h.report.transactionReportCells(Array(1001).fill(row),"America/Los_Angeles");assert.equal(result.rows.length,1001);assert.ok(allocations<=3,"Formatter allocation must stay constant as row count grows");}
  finally{Intl.DateTimeFormat=original;}
 });
+
+test("dashboard tier labels use only the recorded base line and preserve custom identity",async()=>{
+ const h=await reportingFixture(),label=h.load("lib/dashboard.ts").getDashboardTierLabel;
+ assert.equal(label("RECURRING_PLAN",[{type:"BASE_AMOUNT",label:"Original large lot",amountCents:120000}]),"Original large lot");
+ assert.equal(label("CUSTOM_PAYMENT",[{type:"BASE_AMOUNT",label:"Never a custom tier"}]),"Custom payment");
+ for(const snapshot of [null,{},[],[{type:"RECURRING_CHARGE",label:"Water"}],[{type:"BASE_AMOUNT",label:" "}],[{type:"BASE_AMOUNT",label:123}],[{type:"BASE_AMOUNT",label:"A"},{type:"BASE_AMOUNT",label:"B"}]]) assert.equal(label("RECURRING_PLAN",snapshot),"Not recorded");
+});
+
+test("payment board exposes five labeled segments and keeps outcome text beside colored dots",async()=>{
+ const h=await reportingFixture();
+ await h.seed({status:"RETURNED",lineItemsSnapshot:[{type:"BASE_AMOUNT",label:"Recorded tier",amountCents:10000}]});
+ const c=clients(h),page=await h.dashboardPage("");
+ assert.equal(page.props.payments[0].tierLabel,"Recorded tier");
+ const html=renderToStaticMarkup(React.createElement(c.dashboard,page.props));
+ for(const label of ["Status","Amount","Name","Tier","Unit"])assert.ok(html.includes('data-label="'+label+'"'));
+ assert.match(html,/Failed \(Returned\)/);assert.match(html,/rfl-board-dot/);
+ for(const status of ["successful","pending","failed"])assert.ok(html.includes('rfl-summary-'+status));
+});
