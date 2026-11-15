@@ -10,15 +10,77 @@ A normal checkout uses a small number of requests; shared public IPs share 120
 requests. Large shared networks may need operational review; no IP policy can
 perfectly distinguish users behind NAT.
 
-The trusted ingress must strip incoming x-rfl-client-* headers, determine the
-actual client IP from its authenticated network connection / trusted upstream
-chain, and set:
+## Select one trusted ingress
 
-- x-rfl-client-ip: single IPv4 or IPv6 address, no list/port/zone identifier
-- x-rfl-client-time: current Unix epoch milliseconds (13 decimal digits)
-- x-rfl-client-signature: lowercase hexadecimal HMAC-SHA256
+`RFL_LOOKUP_IP_SOURCE` is a server-side deployment setting, never a request
+parameter. Unset means `signed` (the original behavior). Only the exact values
+`signed` and `render` are supported; every other value fails closed with 503.
+Missing or invalid identity never falls back to another adapter or header.
 
-The HMAC input is these exact UTF-8 lines joined by LF, without a trailing LF:
+### Render public web service
+
+Set `RFL_LOOKUP_IP_SOURCE=render` only after reviewing this service's topology.
+The adapter also requires Render's server-provided `RENDER=true` and
+`RENDER_SERVICE_TYPE=web`. These environment checks select the adapter; they do
+not authenticate an individual request or rule out a private-network bypass.
+
+Render documents that public traffic traverses its Cloudflare/load-balancer edge,
+which overwrites caller-supplied `CF-Connecting-IP`. Read that header only, require
+one valid IPv4/IPv6 address, and canonicalize it before the existing limiter.
+Lists, ports, bracketed/scoped IPv6 and malformed addresses fail closed. Ignore
+`X-Forwarded-For`, `X-Real-IP`, `True-Client-IP`, `Forwarded`, and caller-supplied
+`x-rfl-client-*` assertions in this mode. No Render-mode HMAC secret is needed.
+The existing budget's `STRIPE_SECRET_KEY` and PostgreSQL requirements remain.
+
+**Topology prerequisite:** public traffic must reach the application through
+Render's managed edge, with no alternate untrusted path to the listening server.
+Render's application port is not directly reachable over the public internet.
+However, paid web services may receive private-network requests from services in
+the same workspace/region without Cloudflare. Those callers must be trusted or
+network-isolated before enabling this mode. Free web services cannot receive
+private-network connections. Verify the actual current plan/topology; do not
+assume a historical Free plan or an environment flag proves isolation. Do not
+relay arbitrary caller headers through an internal service. Any additional proxy,
+Worker or custom-domain change requires rechecking the trust boundary.
+
+Sources reviewed 2026-11-15:
+- [Render client-IP overwrite guarantee and X-Forwarded-For warning](https://render.com/articles/host-pocketbase-on-render#making-pocketbase-see-the-real-client-ip)
+- [Render public port boundary](https://render.com/docs/web-services#port-binding)
+- [Render private-network paths and Free-service restriction](https://render.com/docs/private-network)
+- [Render-provided service environment variables](https://render.com/docs/environment-variables)
+
+**Release steps (no shell required):**
+1. In the existing RFL Render service, verify its identity, public web-service
+   type, plan, and private-network/environment boundaries. Confirm that no
+   untrusted internal caller or alternate origin can supply the trusted header.
+2. After patch review and publication authorization, deploy the exact reviewed
+   commit with `RFL_LOOKUP_IP_SOURCE=render` in that RFL service. Keep its current
+   verified canonical URL, database configuration and all other safeguards.
+   Setting the variable before the adapter exists will not fix the old code.
+3. Verify all three affected route families below. Through authorized, bounded
+   ingress checks, confirm forged forwarding headers cannot alter limiter
+   identity and a forged CF header is overwritten/rejected at the real edge.
+   Missing/malformed CF identity must yield 503 and never reach lookup. Observe
+   only sanitized pass/fail information, never credentials or raw client IPs;
+   do not add a public diagnostic endpoint or initiate payments for this check.
+4. Confirm durable per-IP/global budgets still return 429 at their boundaries
+   and database/configuration failures return 503. Use isolated fixtures for
+   limit exhaustion; do not flood production or perform payment transactions.
+5. Retain the commit/configuration receipt and topology evidence. Local tests
+   cannot prove live edge header rewriting. If topology cannot be verified,
+   keep publication/activation pending; do not compensate with an IP fallback.
+
+The `onrender.com` hostname can use this adapter. A custom domain is not required
+for client-IP verification. DNS changes alone cannot implement either adapter.
+
+### Other deployments: original signed ingress
+
+Use `RFL_LOOKUP_IP_SOURCE=signed` (or leave it unset). The trusted ingress must
+strip incoming `x-rfl-client-*` headers, determine the actual IP from its
+connection/trusted upstream, and set a single `x-rfl-client-ip`, a 13-digit
+Unix-millisecond `x-rfl-client-time`, and a lowercase-hex HMAC-SHA256
+`x-rfl-client-signature`. The exact UTF-8 signing input is LF-separated with no
+trailing LF:
 
     rfl-lookup-ip-v1
     <timestamp>
@@ -26,25 +88,25 @@ The HMAC input is these exact UTF-8 lines joined by LF, without a trailing LF:
     <URL pathname, excluding query>
     <IP exactly as transmitted in x-rfl-client-ip>
 
-Use RFL_LOOKUP_PROXY_SECRET (at least 32 bytes of random secret material), shared
-only between ingress and server, distinct from payment credentials. Keep clocks
-synchronized. Assertions expire after 30 seconds. Forward the external pathname
-unchanged and prevent direct public access to the backend. Never expose assertion
-headers or the secret in browser responses, client bundles, or logs. Requests
-without valid assertions return generic 503 / Retry-After: 5 before lookup;
-exhausted budgets return generic 429 and Retry-After. Standard x-forwarded-for,
-x-real-ip, Host and forwarded protocol headers are never IP authorities.
+`RFL_LOOKUP_PROXY_SECRET` must have at least 32 bytes, shared only between ingress
+and server and distinct from payment credentials. Preserve the external pathname,
+synchronize clocks (30-second freshness), prevent direct untrusted backend access,
+and never expose assertions or secrets in responses, bundles or logs. CF and
+ordinary forwarded headers cannot replace a valid signature in signed mode.
 
-IP canonicalization collapses equivalent IPv6 and mapped IPv4 spellings. IPv6
-address rotation and distributed sources remain edge-defense considerations.
-Budget keys contain only keyed digests; no raw client IP is stored. Expired rows
-are cleaned in bounded indexed batches by the existing limiter. Global accepted
-request budget bounds key creation. No per-request audit-log entries are added.
+## Shared protections and impact
 
-This change does not configure infrastructure. Deployment requires a reviewed
-signing ingress and secret; absent those, property lookup intentionally fails
-closed. Existing signup/management authentication and nonlookup routes are not
-subject to this new IP contract.
+Both adapters preserve IPv6/mapped-IPv4 canonicalization, keyed budget identities,
+PostgreSQL atomic per-IP/global reservations, bounded cleanup and fail-closed
+errors. No schema/migration or financial behavior changes. No raw IP is stored in
+budget rows and no per-request audit records are added.
+
+Directly protected: GET/HEAD property-code root pages (`/AB-1234`, `/AB1234`,
+case/encoded variants), GET/HEAD `/api/setup/account-code/availability`, and POST
+`/api/public/checkout/session`. This includes account-code confirmation's
+availability check and checkout/review preparation. Login, ADMIN, Stripe
+onboarding/webhooks and `/api/public/checkout/start` do not acquire this IP gate;
+their existing authentication, origin/body and independent limits remain intact.
 
 Stripe webhooks are limited to 1 MiB raw bytes and 10 seconds of body reading.
 Oversize returns 413 before SDK construction/signature verification; malformed,

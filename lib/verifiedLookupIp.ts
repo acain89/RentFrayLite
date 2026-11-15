@@ -1,18 +1,30 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 
-/** Only an authenticated ingress assertion establishes a client IP. Standard
- * forwarding headers and caller-chosen browser/session identifiers are ignored. */
+/** Trust only the explicitly configured ingress. Render mode requires its public
+ * web-service edge; private-network callers must be trusted or isolated.
+ * No generic forwarding header or caller-selected identifier is a fallback. */
 export function verifiedLookupIp(request: Request, now = Date.now()): string | null {
-  const secret = process.env.RFL_LOOKUP_PROXY_SECRET;
-  if (!secret || Buffer.byteLength(secret) < 32) return null;
-  const ip = request.headers.get("x-rfl-client-ip") ?? "";
-  const timestamp = request.headers.get("x-rfl-client-time") ?? "";
-  const signature = request.headers.get("x-rfl-client-signature") ?? "";
-  if (ip.includes("%") || !isIP(ip) || !/^\d{13}$/.test(timestamp) || Math.abs(now - Number(timestamp)) > 30_000 || !/^[a-f0-9]{64}$/.test(signature)) return null;
-  const path = new URL(request.url).pathname;
-  const expected = createHmac("sha256", secret).update(["rfl-lookup-ip-v1", timestamp, request.method.toUpperCase(), path, ip].join("\n")).digest();
-  if (!timingSafeEqual(expected, Buffer.from(signature, "hex"))) return null;
+  const source = process.env.RFL_LOOKUP_IP_SOURCE ?? "signed";
+  let ip: string;
+  if (source === "render") {
+    // Deployment opt-in, not a Host/header-based assertion of Render identity.
+    if (process.env.RENDER !== "true" || process.env.RENDER_SERVICE_TYPE !== "web") return null;
+    ip = request.headers.get("cf-connecting-ip") ?? "";
+    if (ip.includes("%") || !isIP(ip)) return null;
+  } else if (source === "signed") {
+    const secret = process.env.RFL_LOOKUP_PROXY_SECRET;
+    if (!secret || Buffer.byteLength(secret) < 32) return null;
+    ip = request.headers.get("x-rfl-client-ip") ?? "";
+    const timestamp = request.headers.get("x-rfl-client-time") ?? "";
+    const signature = request.headers.get("x-rfl-client-signature") ?? "";
+    if (ip.includes("%") || !isIP(ip) || !/^\d{13}$/.test(timestamp) || Math.abs(now - Number(timestamp)) > 30_000 || !/^[a-f0-9]{64}$/.test(signature)) return null;
+    const path = new URL(request.url).pathname;
+    const expected = createHmac("sha256", secret).update(["rfl-lookup-ip-v1", timestamp, request.method.toUpperCase(), path, ip].join("\n")).digest();
+    if (!timingSafeEqual(expected, Buffer.from(signature, "hex"))) return null;
+  } else {
+    return null;
+  }
   // URL serialization canonicalizes IPv6 spellings and IPv4-mapped IPv6.
   if (isIP(ip) === 4) return ip;
   const canonical = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
