@@ -1,11 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { requireStrongAdminCredential } from "../lib/adminCredential";
+import { requireAdminCredential } from "../lib/adminCredential";
 
 const prisma = new PrismaClient();
 
 async function main(): Promise<void> {
-  const adminCode = requireStrongAdminCredential(process.env.SEED_ADMIN_CODE);
+  const adminCode = requireAdminCredential(process.env.SEED_ADMIN_CODE);
 
   const adminCodeHash = await bcrypt.hash(adminCode, 12);
 

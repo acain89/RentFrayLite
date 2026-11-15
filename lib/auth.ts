@@ -2,7 +2,7 @@ import { isManagementLoginPassword } from "@/lib/managementCredential";
 import { BusinessStatus, SessionType } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { isStrongAdminCredential } from "@/lib/adminCredential";
+import { isAdminCredential } from "@/lib/adminCredential";
 import { verifyPassword } from "@/lib/password";
 import { getCurrentSession } from "@/lib/session";
 
@@ -37,7 +37,7 @@ export async function authenticateManager(
 }
 
 export async function authenticateAdmin(code: string) {
-  if (!isStrongAdminCredential(code)) return null;
+  if (!isAdminCredential(code)) return null;
   const adminRecords = await prisma.adminAccess.findMany({
     where: {
       isActive: true,

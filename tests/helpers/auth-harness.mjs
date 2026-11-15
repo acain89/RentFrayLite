@@ -8,7 +8,7 @@ import ts from 'typescript';
 import bcrypt from 'bcryptjs';
 import { postgres } from './checkout-harness.mjs';
 const require=createRequire(import.meta.url), root=path.resolve(import.meta.dirname,'../..'), enums=require('@prisma/client');
-const compiled=new Map(), initialHash=await bcrypt.hash('old-password',12), adminHash=await bcrypt.hash('isolated-admin-passphrase',12);
+const compiled=new Map(), initialHash=await bcrypt.hash('old-password',12), adminHash=await bcrypt.hash('482731',12);
 const clone=x=>structuredClone(x);
 function isolated(){
  let state={instantPayoutRequest:[],verificationToken:[],manager:[],adminAccess:[],business:[],session:[],auditLog:[],stripeConnection:[],stripeAccountProvisioning:[]},queue=Promise.resolve();const failures=new Set();

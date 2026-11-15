@@ -1,17 +1,12 @@
-import { Buffer } from "node:buffer";
-
-// bcrypt accepts at most 72 UTF-8 bytes. Preserve whitespace and Unicode exactly;
-// reject overflow rather than silently authenticating only a credential prefix.
-// NUL repetition can reproduce a shorter bcrypt key; reject it and lossy UTF-8.
-export function isStrongAdminCredential(value: unknown): value is string {
-  return typeof value === "string" && value.length <= 72 &&
-    Array.from(value.trim()).length >= 16 && Buffer.byteLength(value, "utf8") <= 72 && value.trim().length > 0 &&
-    !value.includes("\0") && Buffer.from(value, "utf8").toString("utf8") === value;
+// ADMIN codes are six ASCII digits. Keep them as strings so leading zeroes
+// survive; never trim, coerce numbers or normalize Unicode lookalikes.
+export function isAdminCredential(value: unknown): value is string {
+  return typeof value === "string" && value.length === 6 && /^[0-9]{6}$/.test(value);
 }
 
-export function requireStrongAdminCredential(value: unknown): string {
-  if (!isStrongAdminCredential(value)) {
-    throw new Error("SEED_ADMIN_CODE must contain at least 16 characters excluding outer whitespace and at most 72 UTF-8 bytes; legacy six-digit codes, NUL characters, and malformed Unicode are not permitted.");
+export function requireAdminCredential(value: unknown): string {
+  if (!isAdminCredential(value)) {
+    throw new Error("SEED_ADMIN_CODE must contain exactly 6 numeric digits (0-9).");
   }
   return value;
 }

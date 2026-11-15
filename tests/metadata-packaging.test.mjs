@@ -65,11 +65,11 @@ test('nonmarketing responses default to noindex without changing credential priv
 const copyScript=path.join(root,'scripts/copy-standalone-assets.mjs');
 test('production startup uses only the packaged standalone assets and dependencies are unchanged',()=>{
   const current=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'));
-  const prior=JSON.parse(execFileSync('git',['show','223b6f853bf94475f30ca76a73ab85404307fd7c:package.json'],{cwd:root,encoding:'utf8',windowsHide:true}));
+  const prior=JSON.parse(execFileSync('git',['show','2e4123fd5166a2936513b7b7f0bafedf1504114c:package.json'],{cwd:root,encoding:'utf8',windowsHide:true}));
   assert.equal(current.scripts.start,'node .next/standalone/server.js');
   assert.equal(current.scripts.build,'node scripts/copy-standalone-assets.mjs --check-release-inputs && next build --webpack && node scripts/copy-standalone-assets.mjs');
-  assert.deepEqual(current,{...prior,scripts:{...prior.scripts,start:current.scripts.start,build:current.scripts.build}});
-  assert.equal(readFileSync(path.join(root,'package-lock.json'),'utf8').replaceAll('\r\n','\n'),execFileSync('git',['show','223b6f853bf94475f30ca76a73ab85404307fd7c:package-lock.json'],{cwd:root,encoding:'utf8',windowsHide:true}).replaceAll('\r\n','\n'));
+  assert.deepEqual(current,prior);
+  assert.equal(readFileSync(path.join(root,'package-lock.json'),'utf8').replaceAll('\r\n','\n'),execFileSync('git',['show','2e4123fd5166a2936513b7b7f0bafedf1504114c:package-lock.json'],{cwd:root,encoding:'utf8',windowsHide:true}).replaceAll('\r\n','\n'));
 });
 async function fixture(t){
   const parent=path.resolve(os.tmpdir()),dir=await mkdtemp(path.join(parent,'rfl-metadata-package-'));
@@ -107,7 +107,17 @@ test('asset copying fails closed if output points to historical source assets',a
   await mkdir(standalone,{recursive:true});await symlink(path.join(dir,'public'),path.join(standalone,'public'),'junction');
   const result=spawnSync(process.execPath,[copyScript],{cwd:dir,encoding:'utf8',windowsHide:true});assert.notEqual(result.status,0);assert.match(result.stderr,/Public asset output must stay inside standalone output/);assert.deepEqual(await readFile(source),before);
 });
-test('the historical APK remains byte-identical to the committed baseline',()=>{
-  const file='public/app-release-signed.apk',original=execFileSync('git',['show','223b6f853bf94475f30ca76a73ab85404307fd7c:'+file],{cwd:root,maxBuffer:5_000_000,windowsHide:true});
-  const digest=data=>createHash('sha256').update(data).digest('hex');assert.equal(digest(readFileSync(path.join(root,file))),digest(original));
+test('clean releases exclude the historical APK while packaging preserves historical source bytes',async t=>{
+  // The clean deployed history intentionally excludes the real historical APK.
+  // Exercise source immutability with a disposable artifact, never import it.
+  const file='public/app-release-signed.apk';
+  assert.equal(execFileSync('git',['ls-files','--',file],{cwd:root,encoding:'utf8',windowsHide:true}).trim(),'');
+  await assert.rejects(access(path.join(root,file)),error=>error.code==='ENOENT');
+  const dir=await fixture(t),source=path.join(dir,file);
+  const digest=data=>createHash('sha256').update(data).digest('hex');
+  const original=digest(Buffer.from('immutable dummy historical artifact'));
+  assert.equal(digest(await readFile(source)),original);
+  execFileSync(process.execPath,[copyScript],{cwd:dir,windowsHide:true});
+  assert.equal(digest(await readFile(source)),original);
+  await assert.rejects(access(path.join(dir,'.next/standalone',file)),error=>error.code==='ENOENT');
 });

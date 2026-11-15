@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { isAdminCredential } from "@/lib/adminCredential";
 
 type LoginResponse = {
   redirectTo?: string;
@@ -22,6 +23,10 @@ export default function AdminLoginPage() {
     event.preventDefault();
 
     setError("");
+    if (!isAdminCredential(code)) {
+      setError("Enter exactly 6 digits.");
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -65,15 +70,18 @@ export default function AdminLoginPage() {
         </header>
 
         <form className="rfl-auth-form" onSubmit={handleSubmit}>
-          <label htmlFor="adminCode">Administrator password or passphrase</label>
+          <label htmlFor="adminCode">Administrator access code</label>
 
           <input
             id="adminCode"
             name="code"
             type="password"
             autoComplete="current-password"
-            maxLength={72}
-            minLength={16}
+            inputMode="numeric"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            minLength={6}
+            title="Enter exactly 6 digits."
             required
             value={code}
             onChange={(event) => {

@@ -57,7 +57,7 @@ for(const backend of [...(postgres?['postgres']:[]),'isolated']){
   const h=await authHarness(backend);h.use('attacker-chosen-token');const response=await h.load('app/api/auth/login/route.ts').POST(h.request({type:'MANAGER',email:h.managers[0].email,password:'old-password'}));assert.equal(response.status,200);assert.notEqual(h.token(),'attacker-chosen-token');assert.ok(await h.session.getCurrentSession());
  });
  test(`${label}: administrator login also rotates a supplied cookie`,async()=>{
-  const h=await authHarness(backend);h.use('attacker-admin-token');const response=await h.load('app/api/auth/login/route.ts').POST(h.request({type:'ADMIN',code:'isolated-admin-passphrase'}));
+  const h=await authHarness(backend);h.use('attacker-admin-token');const response=await h.load('app/api/auth/login/route.ts').POST(h.request({type:'ADMIN',code:'482731'}));
   assert.equal(response.status,200);assert.notEqual(h.token(),'attacker-admin-token');assert.equal((await h.session.getCurrentSession()).type,'ADMIN');
  });
  if(backend==='postgres')test(`${label}: real principal row lock prevents issuance across a reset commit`,async()=>{

@@ -1,7 +1,7 @@
 import { normalizeRegistrationPhone, REGISTRATION_PHONE_INVALID, REGISTRATION_SMS_PHONE_REQUIRED } from "@/lib/registrationPhone";
 import { isNewManagementPassword, isManagementLoginPassword, MANAGEMENT_PASSWORD_REQUIREMENT } from "@/lib/managementCredential";
 import { z } from "zod";
-import { isStrongAdminCredential } from "@/lib/adminCredential";
+import { isAdminCredential } from "@/lib/adminCredential";
 import { isSupportedPropertyTimeZone } from "@/lib/managementBillingSetup";
 import { validatePropertyTimeZone } from "@/lib/propertyBillingCalendar";
 
@@ -21,7 +21,7 @@ export const managerLoginSchema = z.object({
 
 export const adminLoginSchema = z.object({
   type: z.literal("ADMIN"),
-  code: z.string().refine(isStrongAdminCredential, "Unable to sign in."),
+  code: z.string().refine(isAdminCredential, "Unable to sign in."),
 });
 
 export const loginSchema = z.discriminatedUnion("type", [

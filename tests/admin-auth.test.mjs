@@ -5,28 +5,30 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import bcrypt from 'bcryptjs';
 import {authHarness,postgres} from './helpers/auth-harness.mjs';
-const secret='isolated-admin-passphrase';
-async function login(h,code=secret,headers={}){return h.load('app/api/auth/login/route.ts').POST(new Request('https://example.test/api/auth/login',{method:'POST',headers:{origin:'https://example.test','content-type':'application/json',...headers},body:JSON.stringify({type:'ADMIN',code})}));}
+const secret='482731';
+async function login(h,...args){const code=args.length?args[0]:secret,headers=args[1]??{};return h.load('app/api/auth/login/route.ts').POST(new Request('https://example.test/api/auth/login',{method:'POST',headers:{origin:'https://example.test','content-type':'application/json',...headers},body:JSON.stringify({type:'ADMIN',code})}));}
 const events=h=>h.db.auditLog.findMany({where:{action:'ADMIN_LOGIN_VERIFICATION_RESERVED'}});
 function spy(h){const passwords=h.load('lib/password.ts'),verify=passwords.verifyPassword;let count=0;passwords.verifyPassword=async(...args)=>{count++;return verify(...args);};return ()=>count;}
-for(const input of ['123456','',null,'x'.repeat(73),'😀'.repeat(19),' '.repeat(16),'123456'.padEnd(16,' '),'123456\0'.repeat(2)+'123456','\ud800'.repeat(16)])test(`B4 rejects weak/malformed credential ${JSON.stringify(input).slice(0,35)}`,async()=>{
- const h=await authHarness(),count=spy(h);const response=await login(h,input);assert.equal(response.status,401);assert.deepEqual(await response.json(),{error:'Unable to sign in.'});assert.equal(count(),0);assert.equal((await events(h)).length,1);
+for(const input of ['',undefined,null,123456,true,'12345','1234567','abcdef','12a456','+12345','-12345','12.345',' 12345','12345 ','123456\n','123456\r\n','12\u0000345','\u0661\u0662\u0663\u0664\u0665\u0666','\uff11\uff12\uff13\uff14\uff15\uff16','\ud800'.repeat(6),'\ud83d\udd10'.repeat(6)])test(`B4 rejects non-six-digit credential ${JSON.stringify(input)?.slice(0,35)}`,async()=>{
+ const h=await authHarness(),count=spy(h);const policy=h.load('lib/adminCredential.ts');assert.equal(policy.isAdminCredential(input),false);assert.throws(()=>policy.requireAdminCredential(input),/exactly 6 numeric digits/);
+ const response=await login(h,input);assert.equal(response.status,401);assert.deepEqual(await response.json(),{error:'Unable to sign in.'});assert.equal(count(),0);assert.equal((await events(h)).length,1);
 });
-for(const input of ['a'.repeat(16),'x'.repeat(72),'🔐'.repeat(16),'  preserved passphrase  '])test(`B4 policy preserves valid credential (${Buffer.byteLength(input)} bytes)`,async()=>{
- const h=await authHarness();assert.equal(h.load('lib/adminCredential.ts').requireStrongAdminCredential(input),input);
+for(const input of ['000000','000123','123456','482731','999999'])test(`B4 accepts exactly six ASCII digits and preserves leading zeroes (${input})`,async()=>{
+ const h=await authHarness();assert.equal(h.load('lib/adminCredential.ts').requireAdminCredential(input),input);assert.equal(h.load('lib/validators.ts').adminLoginSchema.parse({type:'ADMIN',code:input}).code,input);
  await h.db.adminAccess.update({where:{id:h.admins[0].id},data:{codeHash:await bcrypt.hash(input,12)}});assert.equal((await login(h,input)).status,200);assert.ok((await h.auth.requireAdmin()).adminAccess);
 });
+
 test('B4 real legacy bcrypt hash cannot be authenticated by NUL repetition',async()=>{
  const h=await authHarness(),disguised='123456\0'.repeat(2)+'123456',hash=await bcrypt.hash('123456',12);assert.equal(await bcrypt.compare(disguised,hash),true);
  await h.db.adminAccess.update({where:{id:h.admins[0].id},data:{codeHash:hash}});const count=spy(h);assert.equal((await login(h,disguised)).status,401);assert.equal(count(),0);
 });
 test('B4 repeated/changing guesses share limit; denied attempts perform no hashing or audit writes',async()=>{
- const h=await authHarness(),count=spy(h);for(let n=0;n<10;n++)assert.equal((await login(h,'different-password-'+n)).status,401);
- const checks=count();assert.equal(checks,20);for(let n=0;n<12;n++){const r=await login(h,'another-guess-'+n,{'x-forwarded-for':`192.0.2.${n}`,'forwarded':`for=192.0.2.${n}`});assert.equal(r.status,429);assert.equal(r.headers.get('retry-after'),'300');}
+ const h=await authHarness(),count=spy(h);for(let n=0;n<10;n++)assert.equal((await login(h,String(900000+n))).status,401);
+ const checks=count();assert.equal(checks,20);for(let n=0;n<12;n++){const r=await login(h,String(800000+n),{'x-forwarded-for':`192.0.2.${n}`,'forwarded':`for=192.0.2.${n}`});assert.equal(r.status,429);assert.equal(r.headers.get('retry-after'),'300');}
  assert.equal(count(),checks);assert.equal((await events(h)).length,10);
 });
 test('B4 concurrent routes across module instances and restart share durable budget',async()=>{
- const first=await authHarness(),second=await authHarness('isolated',first.db);const responses=await Promise.all(Array.from({length:24},(_,n)=>login(n%2?first:second,'invalid-passphrase-'+n)));
+ const first=await authHarness(),second=await authHarness('isolated',first.db);const responses=await Promise.all(Array.from({length:24},(_,n)=>login(n%2?first:second,String(700000+n))));
  assert.equal(responses.filter(r=>r.status===401).length,10);assert.equal(responses.filter(r=>r.status===429).length,14);assert.equal((await events(first)).length,10);
  const restarted=await authHarness('isolated',first.db);assert.equal((await login(restarted)).status,429);
 });
@@ -54,13 +56,13 @@ test('B4 security events/public bodies never contain credentials, hashes or sess
 test('B4 database reservation failure fails closed without bcrypt or session issuance',async()=>{
  const h=await authHarness(),count=spy(h);h.db.failures.add('auditLog.create');assert.equal((await login(h)).status,503);assert.equal(count(),0);assert.equal((await h.db.session.findMany()).length,0);
 });
-test('B4 actual seed fails before writes on weak/missing config; accepts strong config without trimming',async()=>{
- const h=await authHarness();for(const value of [undefined,'123456','123456'.padEnd(16,' '),'x'.repeat(73),'  preserved passphrase  ']){
+test('B4 mocked seed rejects malformed configuration before writes and preserves six-digit strings',async()=>{
+ const h=await authHarness();for(const value of [undefined,'12345','1234567','12a456',' 123456','123456 ',123456,'000123',secret]){
   const calls=[],logs=[];let done;const finished=new Promise(r=>done=r);const db={adminAccess:{deleteMany:()=>{calls.push('delete');return {};},create:args=>{calls.push(args);return {};}},$transaction:async()=>{},$disconnect:async()=>done()};const mod={exports:{}};
   vm.runInThisContext('(function(require,module,exports,process,console){'+ts.transpileModule(readFileSync('prisma/seed.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2022}}).outputText+'})')(
    name=>name==='@prisma/client'?{PrismaClient:class{constructor(){return db;}}}:name==='bcryptjs'?{__esModule:true,default:bcrypt}:h.load('lib/adminCredential.ts'),mod,mod.exports,{env:{SEED_ADMIN_CODE:value},exit:()=>{}},{log:(...a)=>logs.push(a),error:(...a)=>logs.push(a.map(v=>v instanceof Error?v.message:v))});
-  await finished;if(value==='  preserved passphrase  '){assert.equal(calls.length,2);assert.equal(await bcrypt.compare(value,calls[1].data.codeHash),true);}else assert.equal(calls.length,0);
-  const output=JSON.stringify(logs);if(value)assert.ok(!output.includes(value));
+  await finished;if(value==='000123'||value===secret){assert.equal(calls.length,2);assert.equal(await bcrypt.compare(value,calls[1].data.codeHash),true);}else assert.equal(calls.length,0);
+  const output=JSON.stringify(logs);if(typeof value==='string'&&value)assert.ok(!output.includes(value));
  }
 });
 if(postgres)test('B4 PostgreSQL: concurrent independent instances, persistent audit budget, recovery and real session issuance',async()=>{
@@ -81,4 +83,19 @@ if(postgres)test('B4 PostgreSQL: concurrent independent instances, persistent au
   assert.equal((await login(first)).status,200);const session=await first.session.getCurrentSession();assert.equal(session.type,'ADMIN');assert.ok(ids.includes(session.adminAccessId));
   await postgres.adminAccess.update({where:{id:session.adminAccessId},data:{isActive:false}});assert.equal(await first.session.getCurrentSession(),null);
  }finally{postgres.adminAccess.findMany=original;}
+});
+
+
+test('B4 actual ADMIN form agrees with API policy and preserves a leading-zero code',async()=>{
+ const {build}=await import('esbuild'),{chromium,expect}=await import('@playwright/test');
+ const compiled=await build({stdin:{contents:"import React from 'react';import{createRoot}from'react-dom/client';import Admin from './app/login/admin/page.tsx';createRoot(document.getElementById('root')).render(React.createElement(Admin));",resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'browser',jsx:'automatic',plugins:[{name:'local-next',setup(b){b.onResolve({filter:/^next\/(link|navigation)$/},a=>({path:a.path,namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},a=>({contents:a.path==='next/link'?"import React from 'react';export default function Link({href,children,...p}){return React.createElement('a',{href,...p},children);}":"export function useRouter(){return {replace:url=>window.__redirect=url,refresh:()=>{}};}",loader:'js',resolveDir:process.cwd()}));}}]});
+ const h=await authHarness();await h.db.adminAccess.update({where:{id:h.admins[0].id},data:{codeHash:await bcrypt.hash('012345',12)}});const requests=[],external=[],browser=await chromium.launch({headless:true});
+ try{const page=await browser.newPage({viewport:{width:375,height:900}});
+ await page.route('**/*',async route=>{const req=route.request(),u=new URL(req.url());if(u.origin!=='https://example.test'){external.push(u.origin);return route.abort();}
+ if(u.pathname==='/api/auth/login'){const body=JSON.parse(req.postData());requests.push(body);const response=await h.load('app/api/auth/login/route.ts').POST(new Request(req.url(),{method:'POST',headers:{origin:'https://example.test','content-type':'application/json'},body:JSON.stringify(body)}));return route.fulfill({status:response.status,contentType:'application/json',body:await response.text()});}
+ return route.fulfill({contentType:'text/html',body:'<meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script>'+compiled.outputFiles[0].text.replaceAll('</script','<\/script')+'</script>'});});
+ await page.goto('https://example.test/login/admin');const input=page.getByLabel('Administrator access code',{exact:true});await expect(input).toHaveAttribute('type','password');await expect(input).toHaveAttribute('inputmode','numeric');await expect(input).toHaveAttribute('pattern','[0-9]{6}');await expect(input).toHaveAttribute('minlength','6');await expect(input).toHaveAttribute('maxlength','6');await expect(input).toHaveAttribute('autocomplete','current-password');
+ for(const value of ['12345','12a456',' 12345','\u0661\u0662\u0663\u0664\u0665\u0666']){await input.fill(value);assert.equal(await input.evaluate(el=>el.checkValidity()),false);await page.locator('form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));await expect(page.getByRole('alert')).toHaveText('Enter exactly 6 digits.');assert.equal(requests.length,0);}
+ await input.fill('012345');assert.equal(await input.evaluate(el=>el.checkValidity()),true);await page.getByRole('button',{name:'Continue',exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__redirect)).toBe('/admin');assert.deepEqual(requests,[{type:'ADMIN',code:'012345'}]);assert.equal((await h.session.getCurrentSession()).type,'ADMIN');assert.deepEqual(external,[]);
+ }finally{await browser.close();}
 });
