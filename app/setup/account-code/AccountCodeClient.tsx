@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SetupProgress from "@/components/setup/SetupProgress";
 
@@ -15,7 +15,8 @@ type SuggestionResponse = {
 };
 
 type AvailabilityResponse = {
-  available?: boolean;
+  available: boolean;
+  valid: true;
 };
 
 type ConfirmResponse = {
@@ -23,6 +24,18 @@ type ConfirmResponse = {
   redirectTo?: string;
   error?: string;
 };
+
+function isAvailabilityResponse(value: unknown): value is AvailabilityResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "valid" in value &&
+    value.valid === true &&
+    "available" in value &&
+    typeof value.available === "boolean"
+  );
+}
 
 function normalizeAccountCode(value: string): string {
   const cleaned = value
@@ -44,6 +57,7 @@ export default function AccountCodeClient({
   initialAccountCode,
 }: AccountCodeClientProps) {
   const router = useRouter();
+  const currentCode = useRef(initialAccountCode ?? "");
 
   const [accountCode, setAccountCode] = useState(
     initialAccountCode ?? ""
@@ -81,8 +95,9 @@ export default function AccountCodeClient({
           return;
         }
 
+        currentCode.current = data.accountCode;
         setAccountCode(data.accountCode);
-        setAvailable(true);
+        setAvailable(null);
       } catch {
         setError("Unable to connect. Please try again.");
       } finally {
@@ -107,10 +122,15 @@ export default function AccountCodeClient({
     }
 
     const controller = new AbortController();
+    let active = true;
+    const isCurrent = () =>
+      active &&
+      !controller.signal.aborted &&
+      currentCode.current === accountCode;
+    setAvailable(null);
+    setChecking(true);
 
     const timer = window.setTimeout(async () => {
-      setChecking(true);
-
       try {
         const response = await fetch(
           `/api/setup/account-code/availability?code=${encodeURIComponent(
@@ -121,24 +141,28 @@ export default function AccountCodeClient({
           }
         );
 
-        const data =
-          (await response.json()) as AvailabilityResponse;
-
-        setAvailable(
-          response.ok && data.available === true
-        );
+        if (!isCurrent()) return;
+        if (!response.ok) throw new Error("Availability verification failed");
+        const data: unknown = await response.json();
+        if (!isCurrent()) return;
+        if (!isAvailabilityResponse(data)) {
+          throw new Error("Invalid availability response");
+        }
+        setAvailable(data.available);
       } catch {
-        if (!controller.signal.aborted) {
+        if (isCurrent()) {
           setAvailable(null);
+          setError("Unable to verify this account code. Please try again.");
         }
       } finally {
-        if (!controller.signal.aborted) {
+        if (isCurrent()) {
           setChecking(false);
         }
       }
     }, 450);
 
     return () => {
+      active = false;
       controller.abort();
       window.clearTimeout(timer);
     };
@@ -152,7 +176,7 @@ export default function AccountCodeClient({
       return;
     }
 
-    if (!available) {
+    if (checking || available !== true) {
       setError("Choose an available account code.");
       return;
     }
@@ -210,7 +234,9 @@ export default function AccountCodeClient({
         ? "This code is available."
         : available === false
           ? "That account code is already taken. Please choose another."
-          : "Use two letters followed by four numbers.";
+          : isValidAccountCode(accountCode)
+            ? "Availability not verified."
+            : "Use two letters followed by four numbers.";
 
   return (
     <main className="rfl-setup-page">
@@ -248,11 +274,15 @@ export default function AccountCodeClient({
             disabled={loading || submitting || confirmed}
             value={accountCode}
             onChange={(event) => {
-              setAccountCode(
-                normalizeAccountCode(event.target.value)
-              );
-              setError("");
-              setConfirmed(false);
+              const nextCode = normalizeAccountCode(event.target.value);
+              if (nextCode !== accountCode) {
+                currentCode.current = nextCode;
+                setAccountCode(nextCode);
+                setAvailable(null);
+                setChecking(false);
+                setError("");
+                setConfirmed(false);
+              }
             }}
           />
 
