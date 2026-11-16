@@ -178,9 +178,9 @@ export default function TermsPage() {
             processing, success, failure, returns, or disputes; frequency varies.
           </p>
           <p>
-            Message and data rates may apply. Reply STOP to opt out or HELP for
+            Message and data rates may apply. Reply <strong>STOP</strong> to opt out or <strong>HELP</strong> for
             help. Management may also turn Payment SMS Notifications off in
-            Settings. An application setting does not override a STOP opt-out.
+            Settings. An application setting does not override a <strong>STOP</strong> opt-out.
             Contact your property manager for payment assistance.
           </p>
           <p>
@@ -188,6 +188,9 @@ export default function TermsPage() {
             device settings, and network availability. Carriers are not liable
             for delayed or undelivered messages. Keep your online payment
             confirmation. SMS consent is not consent to marketing messages.
+          </p>
+          <p>
+            For SMS support, email <a href="mailto:helpdesk@rentfray.com">helpdesk@rentfray.com</a>.
           </p>
         </section>
 

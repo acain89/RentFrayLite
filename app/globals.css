@@ -5132,3 +5132,19 @@ input:focus-visible {
  .rfl-welcome-timing-arrow { transform:none; justify-self:center; }
  .rfl-welcome-timing-rules { grid-template-columns:repeat(2,minmax(0,1fr)); gap:32px; }
 }
+
+/* Public, noindex SMS consent evidence. */
+.rfl-sms-evidence .rfl-legal-card { padding:clamp(14px,4vw,36px); }
+.rfl-sms-evidence h1 { line-height:1.15; }
+.rfl-sms-evidence .rfl-evidence-back { display:inline-block; margin-bottom:20px; }
+.rfl-sms-evidence .rfl-evidence-note { padding:16px; border:1px solid #cfdfd3; border-radius:12px; background:#eef5f0; }
+.rfl-sms-evidence figure { margin:24px 0; padding:16px; border:1px solid #cfdfd3; border-radius:14px; background:#fff; }
+.rfl-sms-evidence figcaption { margin-bottom:16px; line-height:1.65; }
+.rfl-sms-evidence figcaption strong { display:block; }
+.rfl-sms-evidence picture { display:block; }
+.rfl-sms-evidence img { display:block; width:auto; max-width:100%; height:auto; margin-inline:auto; border:1px solid #dce6df; }
+.rfl-sms-evidence .rfl-evidence-image-links { display:flex; flex-wrap:wrap; gap:12px 20px; margin-top:14px; font-size:13px; }
+.rfl-sms-evidence details { margin:20px 0; }
+.rfl-sms-evidence summary { cursor:pointer; font-weight:600; }
+.rfl-sms-evidence :is(a,summary):focus-visible { outline:3px solid #477a55; outline-offset:4px; }
+@media(max-width:480px) { .rfl-sms-evidence figure { padding:10px; } }

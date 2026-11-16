@@ -1,0 +1,100 @@
+{
+  "baseCommit": "f0021a2eb9f58c55d89705d76666689e2c2a20e6",
+  "captureMethod": "Playwright Chromium screenshots of the actual unmodified RFL React components and stylesheet",
+  "fictionalDetails": {
+    "firstName": "Jordan",
+    "lastName": "Example",
+    "unit": "DEMO-12",
+    "phone": "202-555-0142"
+  },
+  "viewport": {
+    "width": 900,
+    "height": 1100
+  },
+  "sourceHashes": {
+    "app/[accountCode]/RecurringCheckoutClient.tsx": "226b495fc279395aaa2b60ab3cc009aa9e20ec76ddd9a4cc17df33f50d58343f",
+    "app/manager/settings/PaymentSmsSettings.tsx": "4d626350fee87118f60bcaca8251ec11e8b7dc8c6266ad8e955d75f56910e858",
+    "lib/smsConsent.ts": "92b10e6e31734afc150b851ea14ebd1e62c27459f063d19fab574386fb14727d"
+  },
+  "captures": [
+    {
+      "file": "public/sms-consent/customer-opt-in.png",
+      "width": 622,
+      "height": 710,
+      "sha256": "2d0dc077dee678ac3e7ee1544a6ee25905b1f1823afe7e8eab777e1e4d3c42a2",
+      "viewport": {
+        "width": 900,
+        "height": 1100
+      },
+      "component": "app/[accountCode]/RecurringCheckoutClient.tsx",
+      "customerConsentChecked": false
+    },
+    {
+      "file": "public/sms-consent/manager-off.png",
+      "width": 640,
+      "height": 48,
+      "sha256": "66414bcdc4193a5564559ad9805f2f904a5632ad6c0f749a31f98f4fb30988de",
+      "viewport": {
+        "width": 900,
+        "height": 1100
+      },
+      "component": "app/manager/settings/PaymentSmsSettings.tsx",
+      "notificationsEnabled": false,
+      "managerConsentVisible": false
+    },
+    {
+      "file": "public/sms-consent/manager-consent.png",
+      "width": 640,
+      "height": 192,
+      "sha256": "af1bf3833f64c4815ca2014abe522cbfd66634b1783c0d99515b9e95f9b0a84f",
+      "viewport": {
+        "width": 900,
+        "height": 1100
+      },
+      "component": "app/manager/settings/PaymentSmsSettings.tsx",
+      "notificationsEnabled": true,
+      "managerConsentChecked": false
+    },
+    {
+      "file": "public/sms-consent/customer-opt-in-mobile.png",
+      "width": 356,
+      "height": 895,
+      "sha256": "f57f54d286def0f4f079a38387583e094838938f9d0cce0cbbf93112cdc08f6e",
+      "viewport": {
+        "width": 390,
+        "height": 1000
+      },
+      "component": "app/[accountCode]/RecurringCheckoutClient.tsx",
+      "customerConsentChecked": false
+    },
+    {
+      "file": "public/sms-consent/manager-off-mobile.png",
+      "width": 358,
+      "height": 48,
+      "sha256": "5e3386aac270b16c26e0d412d42984329381d03aa4d7cbdf475188457f05c4a5",
+      "viewport": {
+        "width": 390,
+        "height": 1000
+      },
+      "component": "app/manager/settings/PaymentSmsSettings.tsx",
+      "notificationsEnabled": false,
+      "managerConsentVisible": false
+    },
+    {
+      "file": "public/sms-consent/manager-consent-mobile.png",
+      "width": 358,
+      "height": 288,
+      "sha256": "00f22927de3f183503ddeacd73b98adfeded84b7fa9e2c2ae1c80e0b85517b91",
+      "viewport": {
+        "width": 390,
+        "height": 1000
+      },
+      "component": "app/manager/settings/PaymentSmsSettings.tsx",
+      "notificationsEnabled": true,
+      "managerConsentChecked": false
+    }
+  ],
+  "mutatingRequests": 0,
+  "externalRequests": 0,
+  "capturedAt": "2026-11-16T01:24:56.748Z"
+}
