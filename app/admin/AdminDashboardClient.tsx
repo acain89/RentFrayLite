@@ -1,10 +1,10 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import LogoutButton from "@/components/LogoutButton";
 import ManagementPasswordChecklist from "@/components/ManagementPasswordChecklist";
 import { isNewManagementPassword, MANAGEMENT_PASSWORD_REQUIREMENT, MANAGEMENT_PASSWORD_MIN_LENGTH } from "@/lib/managementPasswordPolicy";
 
-import { useRouter } from "next/navigation";
 import type { AdminDashboardData } from "@/lib/adminDashboard";
 import { SMS_DELIVERY_STATES, type SmsDeliveryMetric } from "@/lib/smsDeliveryReporting";
 
@@ -91,7 +91,6 @@ export default function AdminDashboardClient({
 }: {
   initialData: AdminDashboardData;
 }) {
-  const router = useRouter();
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [dashboard, setDashboard] =
@@ -316,22 +315,6 @@ async function deleteBusiness(): Promise<void> {
   }
 }
 
-  async function logout(): Promise<void> {
-    try {
-      const response = await fetch("/api/auth/logout", {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        throw new Error("Logout failed.");
-      }
-
-      router.replace("/login/admin");
-      router.refresh();
-    } catch {
-      window.location.href = "/login/admin";
-    }
-  }
 
   return (
     <main className="rfl-admin-page">
@@ -341,13 +324,7 @@ async function deleteBusiness(): Promise<void> {
           <h1>RentFrayLite Admin</h1>
         </div>
 
-        <button
-          className="rfl-admin-secondary-button"
-          type="button"
-          onClick={logout}
-        >
-          Log out
-        </button>
+        <LogoutButton href="/login/admin" label="Log out" className="rfl-admin-secondary-button" />
       </header>
 
       <section className="rfl-admin-card">

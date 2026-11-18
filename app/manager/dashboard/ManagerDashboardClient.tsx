@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import LogoutButton from "@/components/LogoutButton";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardPayment } from "@/lib/dashboard";
@@ -48,7 +49,7 @@ export default function ManagerDashboardClient(p:Props) {
       </div>
       <details className="rfl-home-menu"><summary aria-label="Account menu">Account</summary><div>
         <p>{p.managerName}</p><Link href="/manager/settings">Settings</Link>
-        <button type="button" onClick={async()=>{try{const response=await fetch("/api/auth/logout",{method:"POST"});if(!response.ok)throw new Error("Logout failed.");}finally{window.location.assign("/");}}}>Sign Out</button>
+        <LogoutButton href="/" label="Sign Out" />
       </div></details>
     </header>
     <aside className={"rfl-home-readiness"+(p.readiness.ready?" is-ready":"")} aria-label="Payment readiness" role="status">

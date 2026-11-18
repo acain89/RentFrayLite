@@ -332,7 +332,7 @@ async function beginCheckout() {
               <li>One-time payment only</li>
               <li>No automatic payments</li>
               <li>
-                SMS receipt sent after payment
+                Optional payment-status texts require consent and service availability. Delivery is not guaranteed.
               </li>
             </ul>
           </div>
