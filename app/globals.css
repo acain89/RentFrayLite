@@ -5157,6 +5157,7 @@ input:focus-visible {
 .rfl-qr-dashboard-link:focus-visible,.rfl-qr-controls :focus-visible,.rfl-qr-url:focus-visible { outline:3px solid #356d46; outline-offset:4px; }
 .rfl-qr-print-page { max-width:760px; margin:32px auto; padding:0 20px; }
 .rfl-qr-controls { display:flex; justify-content:center; flex-wrap:wrap; gap:12px; margin:0 0 24px; }
+.rfl-qr-controls > .rfl-secondary-button { display:flex; align-items:center; justify-content:center; text-align:center; }
 .rfl-qr-sheet { box-sizing:border-box; padding:40px 28px; border:1px solid #d7e1d8; border-radius:20px; background:#fff; color:#000; text-align:center; }
 .rfl-qr-sheet h1 { margin:0 0 12px; font-size:clamp(26px,5vw,36px); line-height:1.18; overflow-wrap:anywhere; }
 .rfl-qr-code { margin:0 0 20px; font-size:30px; font-weight:700; letter-spacing:.08em; }
