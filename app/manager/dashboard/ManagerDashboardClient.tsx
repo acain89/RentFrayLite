@@ -47,10 +47,13 @@ export default function ManagerDashboardClient(p:Props) {
       <div className="rfl-home-identity"><p className="rfl-eyebrow">RentFrayLite</p><h1>{p.businessName}</h1>
         <button className="rfl-home-code" onClick={sharePaymentLink} type="button" aria-label={"Share payment link for account code "+p.accountCode}>{p.accountCode} <span aria-hidden="true">{"\u2197"}</span></button>
       </div>
+      <div className="rfl-home-account-actions">
       <details className="rfl-home-menu"><summary aria-label="Account menu">Account</summary><div>
         <p>{p.managerName}</p><Link href="/manager/settings">Settings</Link>
         <LogoutButton href="/" label="Sign Out" />
       </div></details>
+      {p.accountCode && p.accountCode !== "-" && <Link className="rfl-qr-dashboard-link" prefetch={false} href="/manager/payment-qr">Print Payment QR Code</Link>}
+      </div>
     </header>
     <aside className={"rfl-home-readiness"+(p.readiness.ready?" is-ready":"")} aria-label="Payment readiness" role="status">
       <span aria-hidden="true">{p.readiness.ready?"\u25cf":"!"}</span> <strong>{p.readiness.title}</strong>

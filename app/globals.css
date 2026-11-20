@@ -5148,3 +5148,29 @@ input:focus-visible {
 .rfl-sms-evidence summary { cursor:pointer; font-weight:600; }
 .rfl-sms-evidence :is(a,summary):focus-visible { outline:3px solid #477a55; outline-offset:4px; }
 @media(max-width:480px) { .rfl-sms-evidence figure { padding:10px; } }
+
+/* Authenticated payment QR sheet; page margins are local to the print route. */
+.rfl-home-account-actions { display:flex; flex-direction:column; align-items:stretch; gap:8px; flex-shrink:0; max-width:48%; }
+.rfl-home-account-actions summary { text-align:center; }
+.rfl-qr-dashboard-link { display:block; padding:10px 12px; border:1px solid #b9cdbd; border-radius:10px; background:white; color:#173c24; font-size:12px; text-align:center; text-decoration:none; line-height:1.4; }
+.rfl-qr-dashboard-link:hover { background:#e8f0e9; }
+.rfl-qr-dashboard-link:focus-visible,.rfl-qr-controls :focus-visible,.rfl-qr-url:focus-visible { outline:3px solid #356d46; outline-offset:4px; }
+.rfl-qr-print-page { max-width:760px; margin:32px auto; padding:0 20px; }
+.rfl-qr-controls { display:flex; justify-content:center; flex-wrap:wrap; gap:12px; margin:0 0 24px; }
+.rfl-qr-sheet { box-sizing:border-box; padding:40px 28px; border:1px solid #d7e1d8; border-radius:20px; background:#fff; color:#000; text-align:center; }
+.rfl-qr-sheet h1 { margin:0 0 12px; font-size:clamp(26px,5vw,36px); line-height:1.18; overflow-wrap:anywhere; }
+.rfl-qr-code { margin:0 0 20px; font-size:30px; font-weight:700; letter-spacing:.08em; }
+.rfl-payment-qr { display:block; width:4in; max-width:100%; height:auto; aspect-ratio:1; margin:0 auto; background:#fff; }
+.rfl-qr-instruction { margin:20px 0 12px; font-size:20px; line-height:1.4; }
+.rfl-qr-url { color:#000; font-size:16px; line-height:1.5; overflow-wrap:anywhere; }
+@media print {
+  html:has(.rfl-qr-print-page),body:has(.rfl-qr-print-page),body:has(.rfl-qr-print-page) .rfl-site-frame,body:has(.rfl-qr-print-page) .rfl-site-content { display:block!important; background:#fff!important; margin:0!important; padding:0!important; height:auto!important; min-height:0!important; }
+  body:has(.rfl-qr-print-page) .rfl-site-footer,.rfl-qr-controls { display:none!important; }
+  .rfl-qr-print-page { max-width:none; margin:0; padding:0; }
+  .rfl-qr-sheet { border:0; border-radius:0; padding:0; margin:0; width:100%; break-inside:avoid; box-shadow:none; }
+  .rfl-qr-sheet h1 { font-size:24pt; line-height:1.15; }
+  .rfl-qr-code { font-size:24pt; margin-bottom:16pt; }
+  .rfl-payment-qr { width:4in; max-width:none; height:4in; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+  .rfl-qr-instruction { font-size:17pt; margin:16pt 0 10pt; }
+  .rfl-qr-url { font-size:12pt; text-decoration:none; }
+}
