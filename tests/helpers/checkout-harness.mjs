@@ -1,3 +1,4 @@
+import {historicalCardFee} from "./historical-card-fixture.mjs";
 import { attachPublicBudgetStorage } from "./public-budget-storage.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -74,7 +75,7 @@ function matches(row, where = {}) {
 // The ordinary suite models persistence, not pricing or retry decisions. The
 // optional PostgreSQL run repeats the same actual routes with real Prisma.
 function isolatedDatabase(business) {
-  let state = { refunds: [], notifications: [], suppressions: [], reconciliations: [], payments: [], checkouts: [], audits: [], receipts: [], sessions: [], admins: [], managers: [] };
+  let state = { pushEvents: [], refunds: [], notifications: [], suppressions: [], reconciliations: [], payments: [], checkouts: [], audits: [], receipts: [], sessions: [], admins: [], managers: [] };
   let deleted = false;
   let queue = Promise.resolve();
   const knownError = () => new enums.Prisma.PrismaClientKnownRequestError("checkout attempt identity", { code: "P2002", clientVersion: "isolated" });
@@ -153,7 +154,7 @@ function isolatedDatabase(business) {
     },
     adminAccess: model("admins"), session: model("sessions"), manager: model("managers"),
     stripeConnection: { upsert: async ({ update }) => { Object.assign(business.stripeConnection, clone(update)); return clone(business.stripeConnection); } },
-    smsNotification: model("notifications"), smsSuppression: model("suppressions"),
+    pushEvent: model("pushEvents"), smsNotification: model("notifications"), smsSuppression: model("suppressions"),
     customerRefundObservation: model("refunds"), directFinancialReconciliation: model("reconciliations"), payment: model("payments"), checkoutSession: model("checkouts"), auditLog: model("audits"), smsReceipt: model("receipts"),
     $queryRaw: async query => {
       assert.ok(/pg_advisory_xact_lock|FOR (?:NO KEY )?UPDATE/.test(query.sql), "production decision must acquire database locks");
@@ -310,9 +311,17 @@ async function harness(method, backend, clock) {
   const start = checkout => load("app/api/public/checkout/start/route.ts").POST(request({ checkoutSessionId: checkout.id }));
   const payments = () => db.payment.findMany({ where: { businessId: business.id } });
   async function original(status = "FAILED") {
-    const checkout = await prepare();
+    let checkout = await prepare(method === "CARD" ? { paymentMethod: "ACH" } : {});
     assert.equal((await start(checkout)).status, 200);
-    const [payment] = await payments();
+    let [payment] = await payments();
+    if (method === "CARD") {
+      // Synthetic historical card record, not a new card API/Stripe request.
+      const fee = historicalCardFee(payment.subtotalCents), total = payment.subtotalCents + fee;
+      const items = checkout.lineItems.map(item => item.type === "PLATFORM_FEE" ? { ...item, label: "Platform service fee ? card", amountCents: fee } : item);
+      payment = await db.payment.update({ where: { id: payment.id }, data: { paymentMethod: "CARD", platformFeeCents: fee, totalChargedCents: total, rflApplicationFeeCents: fee, lineItemsSnapshot: items } });
+      checkout = await db.checkoutSession.update({ where: { id: checkout.id }, data: { paymentMethod: "CARD", platformFeeCents: fee, totalCents: total, rflApplicationFeeCents: fee, lineItems: items } });
+      const session = live.sessions.get(payment.stripeCheckoutSessionId); session.amount_total = total; session.payment_method_types = ["card"];
+    }
     await db.payment.update({ where: { id: payment.id }, data: { status, failedAt: status === "FAILED" ? new Date() : null } });
     return { payment: await db.payment.findUnique({ where: { id: payment.id } }), checkout, session: live.sessions.get(payment.stripeCheckoutSessionId) };
   }
@@ -351,7 +360,7 @@ async function harness(method, backend, clock) {
       : intent.id;
     assert.equal(payment.stripePaymentIntentId, expectedIntentId);
     assert.equal((await db.checkoutSession.findUnique({ where: { id: attempt.checkout.id } })).status, "PAID");
-    assert.ok(await db.smsReceipt.findUnique({ where: { paymentId: payment.id } }));
+    if (payment.paymentMethod === "ACH") assert.ok(await db.pushEvent.findFirst({ where: { paymentId: payment.id, kind: "PAID" } }));
     return payment;
   }
   function settle(attempt, intent) {

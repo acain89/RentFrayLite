@@ -169,40 +169,18 @@ test("repeated real page loads only read stored state and never enqueue or send 
   h.payment.status = "PAID"; // Simulate an authoritative settlement, not a page transition.
   const paid = await h.render();
   assert.ok(paid.includes("Payment successful"));
-  assert.ok(paid.includes("If you opted in"));
+  assert.ok(!paid.includes("SMS"));
   assert.equal(h.payment.smsReceipt.status, "QUEUED");
 });
 
-test("legacy SMS failure is unknown and does not change confirmed payment status", async () => {
-  const h = harness();
-  await h.authorize();
-  h.payment.smsReceipt.status = "FAILED";
-  assert.ok((await h.render()).includes("delivery information is unavailable"));
-  assert.equal(h.payment.status, "PAID");
-});
-
-for (const [status, text] of [
-  ["QUEUED", "receipt is queued"], ["SENDING", "being submitted"],
-  ["SENT", "Delivery is not yet confirmed"], ["DELIVERED", "confirmed delivery"],
-  ["FAILED", "SMS receipt failed"], ["SUPPRESSED", "receipt is suppressed"],
-  ["AMBIGUOUS", "will not be automatically resent"],
-]) test("tenant result uses authoritative outbox " + status + " without changing payment", async () => {
+test("historical SMS delivery does not affect payment result or appear in UI", async () => {
   const h = harness(); await h.authorize();
-  h.payment.smsReceipt.status = "SENT";
-  h.payment.smsNotifications = [{ status, recipientType: "TENANT", reasonCode: null }];
-  const before = structuredClone(h.payment), html = await h.render();
-  assert.ok(html.includes(text)); assert.ok(html.includes("Payment successful"));
-  assert.deepEqual(h.payment, before);
-});
-
-test("tenant result reflects later failed and delivered callbacks over a stale SENT receipt", async () => {
-  const h = harness(); await h.authorize(); h.payment.smsReceipt.status = "SENT";
-  const n = { status: "SENT", recipientType: "TENANT", reasonCode: null }; h.payment.smsNotifications = [n];
-  assert.ok((await h.render()).includes("Delivery is not yet confirmed"));
-  n.status = "FAILED"; assert.ok((await h.render()).includes("SMS receipt failed"));
-  n.reasonCode = "OPTED_OUT"; assert.ok((await h.render()).includes("receipt is suppressed"));
-  n.status = "DELIVERED"; n.reasonCode = null; assert.ok((await h.render()).includes("confirmed delivery"));
-  assert.equal(h.payment.smsReceipt.status, "SENT"); assert.equal(h.payment.status, "PAID");
+  for (const status of ["QUEUED", "SENT", "FAILED", "DELIVERED"]) {
+    h.payment.smsReceipt.status = status;
+    const before = structuredClone(h.payment), html = await h.render();
+    assert.ok(html.includes("Payment successful")); assert.ok(!html.includes("SMS receipt"));
+    assert.deepEqual(h.payment, before);
+  }
 });
 
 for (const [zone, instant, expected] of [

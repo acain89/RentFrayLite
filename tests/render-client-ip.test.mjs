@@ -1,9 +1,9 @@
+import {assertUnchangedAchCore,assertAdditivePushSchema,assertCheckoutMethodBoundary} from "./helpers/ach-cleanup-boundary.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createHmac} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
-import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import ts from 'typescript';
 import {harness} from './helpers/checkout-harness.mjs';
@@ -88,8 +88,4 @@ for(const kind of ['missing budget key','database transaction failure'])test(kin
  let transactions=0;const db={$transaction:async()=>{transactions++;throw new Error('Private database detail must not escape');}};
  const response=await proxy(db,budget.publicRequestGuard)(request({'cf-connecting-ip':'192.0.2.8'}));assert.equal(response.status,503);assert.equal(response.headers.get('retry-after'),'5');assert.equal(response.headers.get('cache-control'),'no-store');assert.deepEqual(await response.json(),{error:'Temporarily unavailable. Please try again later.'});assert.equal(transactions,kind==='missing budget key'?0:1);
 });
-test('schema, every migration, limiter, proxy and payment/account-code endpoints are unchanged',()=>{
- const paths=['prisma/schema.prisma','lib/publicRequestBudget.ts','proxy.ts','app/api/setup/account-code/route.ts','app/api/setup/account-code/availability/route.ts','app/api/public/checkout/session/route.ts','app/api/public/checkout/start/route.ts','app/api/stripe/connect/route.ts'];
- paths.push(...execFileSync('git',['ls-files','prisma/migrations'],{encoding:'utf8'}).trim().split('\n'));
- for(const path of paths)assert.equal(readFileSync(path,'utf8').replaceAll('\r\n','\n'),execFileSync('git',['show','HEAD:'+path],{encoding:'utf8'}).replaceAll('\r\n','\n'),path);
-});
+test('ACH cleanup preserves ingress and historical schema boundaries',()=>{assertUnchangedAchCore();assertAdditivePushSchema();assertCheckoutMethodBoundary();});

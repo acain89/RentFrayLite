@@ -1,9 +1,9 @@
-import { queuePaymentSms } from "@/lib/smsNotifications";
+import { queueAchPushEvent } from "@/lib/pushNotifications";
 import { isCustomerRefundEvent, processCustomerRefundEvent } from "@/lib/customerRefundObservation";
 import { queueDirectReconciliation, queueDirectFinancialEvent, DIRECT_FINANCIAL_EVENTS } from "@/lib/directFinancialReconciliation";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { CheckoutSessionStatus, PaymentMethod, PaymentStatus, Prisma, SmsReceiptStatus } from "@prisma/client";
+import { CheckoutSessionStatus, PaymentMethod, PaymentStatus, Prisma } from "@prisma/client";
 import type Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { canApplyStripePaymentState } from "@/lib/paymentStatus";
@@ -328,8 +328,7 @@ export async function processStripePaymentEvent(event: Stripe.Event, stripe: Str
         if (updated.count !== 1) throw new Error("Payment changed during webhook reconciliation");
       }
       if (transition) {
-        try { await queuePaymentSms(tx, payment, checkout, payment.business, observed.status!, event.id); }
-        catch { throw new ProcessingFailure("SMS_OUTBOX_PERSISTENCE_FAILED"); }
+        await queueAchPushEvent(tx, payment, observed.status!, event.id);
         const checkoutStatus = observed.settled ? CheckoutSessionStatus.PAID
           : observed.status === PaymentStatus.FAILED ? CheckoutSessionStatus.FAILED
           : observed.status === PaymentStatus.EXPIRED ? CheckoutSessionStatus.EXPIRED
@@ -339,13 +338,6 @@ export async function processStripePaymentEvent(event: Stripe.Event, stripe: Str
           data: { status: checkoutStatus },
         });
         if (updatedCheckout.count !== 1) throw new Error("Checkout ownership changed during reconciliation");
-        if (observed.status === PaymentStatus.PAID) {
-          await tx.smsReceipt.upsert({
-            where: { paymentId: payment.id },
-            create: { paymentId: payment.id, phone: payment.payerPhone, status: SmsReceiptStatus.QUEUED },
-            update: {},
-          });
-        }
       }
       if (payment.chargeModel === "DIRECT" && observed.status && [PaymentStatus.PAID,PaymentStatus.RETURNED,PaymentStatus.DISPUTED].includes(observed.status as "PAID"|"RETURNED"|"DISPUTED")) {
         await queueDirectReconciliation(tx,{...payment,status:observed.status,stripePaymentIntentId:observed.intentId,stripeChargeId:observed.chargeId});

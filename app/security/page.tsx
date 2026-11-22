@@ -74,7 +74,7 @@ export default function SecurityPage() {
 
         <div className="rfl-trust-strip">
           <strong>Secure checkout powered by Stripe</strong>
-          <span>ACH and card payment options</span>
+          <span>ACH bank-account payments</span>
         </div>
 
         <Link className="rfl-info-home-link" href="/">

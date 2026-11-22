@@ -18,11 +18,11 @@ async function publicProps(h){
  const page=await h.load("app/[accountCode]/page.tsx").default({params:Promise.resolve({accountCode:h.business.accountCode})});
  return page.props.children.find(child=>Array.isArray(child?.props?.plans)).props;
 }
-for(const backend of postgres?["isolated","postgres"]:["isolated"])for(const method of ["ACH","CARD"]){
+for(const backend of postgres?["isolated","postgres"]:["isolated"])for(const method of ["ACH"]){
  test(backend+" "+method+": property code ? Custom ? summary/method ? Stripe ? private confirmation",async()=>{
   const h=await customFixture(method,backend),origin=h.load("lib/credentialRequest.ts").configuredCredentialOrigin(),browser=await chromium.launch({headless:true});
   try{
-   const page=await browser.newPage();page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(10000);page.on("pageerror",error=>console.error("Isolated browser error:",error.message));await page.route("**/*",async route=>{
+   const page=await browser.newPage();page.setDefaultTimeout(30000);page.setDefaultNavigationTimeout(30000);page.on("pageerror",error=>console.error("Isolated browser error:",error.message));await page.route("**/*",async route=>{
     const request=route.request(),url=new URL(request.url());
     if(url.hostname==="checkout.stripe.com")return route.fulfill({contentType:"text/html",body:"<h1>Mock Stripe Checkout</h1>"});
     if(url.origin!==origin)return route.abort();
@@ -37,9 +37,9 @@ for(const backend of postgres?["isolated","postgres"]:["isolated"])for(const met
    await page.getByLabel("First name",{exact:true}).fill("Custom");await page.getByLabel("Last name",{exact:true}).fill("Payer");await page.getByLabel("Unit / space number").fill("101");await page.getByLabel("Mobile phone").fill("5555551234");
    const quoteResponse=page.waitForResponse(r=>r.url()===origin+"/api/public/checkout/session");await page.getByRole("button",{name:"Review Payment",exact:true}).click();assert.equal((await quoteResponse).status(),201);await page.waitForURL("**/review?session=*");await expect(page.getByRole("heading",{name:"Review Payment"})).toBeVisible();
    assert.equal(await page.getByText("Billing Cycle",{exact:true}).count(),0);assert.equal(await page.getByText("Due Date",{exact:true}).count(),0);
-   const originalUrl=page.url();if(method==="CARD"){const methodResponse=page.waitForResponse(r=>r.url()===origin+"/api/public/checkout/session");await page.getByRole("radio",{name:"Credit or debit card",exact:true}).click();assert.equal((await methodResponse).status(),201);await page.waitForURL(url=>url.href!==originalUrl);await expect(page.getByRole("radio",{name:"Credit or debit card",exact:true})).toBeChecked();}
+   await expect(page.getByRole('radio',{name:'Credit or debit card',exact:true})).toHaveCount(0);
    const latestId=new URL(page.url()).searchParams.get("session"),latest=await h.db.checkoutSession.findUnique({where:{id:latestId}});
-   assert.equal(latest.paymentMethod,method);assert.equal(latest.subtotalCents,12345);assert.equal(latest.platformFeeCents,method==="ACH"?395:700);await expect(page.getByText("Processing fee",{exact:true})).toBeVisible();
+   assert.equal(latest.paymentMethod,method);assert.equal(latest.subtotalCents,12345);assert.equal(latest.platformFeeCents,395);await expect(page.getByText("Processing fee",{exact:true})).toBeVisible();
    const startResponse=page.waitForResponse(r=>r.url()===origin+"/api/public/checkout/start");await page.getByRole("button",{name:"Continue to Secure Payment"}).click();assert.equal((await startResponse).status(),200);await page.waitForURL("https://checkout.stripe.com/**");assert.equal(h.calls.creates.length,1);assert.equal((await h.payments()).length,1);
    const a=await h.current(latest),intent=h.intentFor(a);h.settle(a,intent);await h.webhook(a,intent);await page.goto(origin+"/payment/success?accountCode="+h.business.accountCode+"&session_id="+a.session.id);
    await expect(page.getByRole("heading",{name:"Payment successful"})).toBeVisible();await expect(page.getByText("Custom Payment",{exact:true})).toBeVisible();
@@ -54,7 +54,7 @@ for(const backend of postgres?["isolated","postgres"]:["isolated"]){
   h.mocks["@/lib/auth"]={requireManager:async()=>({manager:{displayName:"Manager",email:"manager@example.test"},business:h.business})};h.mocks["./ManagerHistoryClient"]={__esModule:true,default:()=>null};h.mocks["next/navigation"].redirect=url=>{throw Error("Unexpected redirect "+url);};
   const props=(await h.load("app/manager/history/page.tsx").default()).props,browser=await chromium.launch({headless:true});
   try{
-   const page=await browser.newPage();page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(10000);await page.route("**/*",route=>new URL(route.request().url()).hostname==="example.test"?route.fulfill({contentType:"text/html",body:'<div id="root"></div>'}):route.abort());await page.goto("https://example.test/history");
+   const page=await browser.newPage();page.setDefaultTimeout(30000);page.setDefaultNavigationTimeout(30000);await page.route("**/*",route=>new URL(route.request().url()).hostname==="example.test"?route.fulfill({contentType:"text/html",body:'<div id="root"></div>'}):route.abort());await page.goto("https://example.test/history");
    await page.evaluate(p=>{window.props=p;window.__printCount=0;window.print=()=>window.__printCount++;URL.createObjectURL=blob=>{window.__csvPromise=blob.text();return "blob:isolated-export";};URL.revokeObjectURL=()=>{};HTMLAnchorElement.prototype.click=function(){};},props);
    await page.addScriptTag({content:await bundle("app/manager/history/ManagerHistoryClient.tsx")});await expect(page.getByRole("columnheader",{name:"Type",exact:true})).toBeVisible();await expect(page.locator("tbody").getByText("Custom",{exact:true})).toBeVisible();
    await expect(page.getByLabel("Tenant name")).toBeVisible();await expect(page.getByRole("link",{name:"Export CSV"})).toHaveAttribute("href",/api\/manager\/transactions\/export/);

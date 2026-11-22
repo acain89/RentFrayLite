@@ -15,7 +15,7 @@ export default function PrivacyPage() {
           <h1>Privacy Policy</h1>
           <p>Effective date: July 26, 2026</p>
           <p>Version 1.0</p>
-          <p>Payment SMS disclosures updated: October 25, 2026</p>
+          <p>Payment notifications updated: November 22, 2026</p>
         </header>
 
         <section>
@@ -85,7 +85,7 @@ export default function PrivacyPage() {
             <li>Calculate configured charges and Platform Service Fees.</li>
             <li>Initiate and track transactions through Stripe.</li>
             <li>Prevent duplicate, unauthorized, or fraudulent activity.</li>
-            <li>Send transactional SMS receipts and status messages.</li>
+            <li>Provide optional manager browser payment-status notifications.</li>
             <li>Provide dashboards, history, support, and account recovery.</li>
             <li>Monitor security, reliability, and performance.</li>
             <li>Understand product usage and improve the Service.</li>
@@ -111,31 +111,10 @@ export default function PrivacyPage() {
         </section>
 
         <section>
-          <h2>5. Twilio and SMS</h2>
-          <p>
-            We may use Twilio or another communications provider to
-            send transactional SMS receipts or payment-status messages.
-            We may share the destination phone number and message
-            content with that provider for delivery, security,
-            troubleshooting, and delivery reporting.
-          </p>
-          <p>
-            Mobile carriers and communications providers may process
-            message metadata under their own policies.
-          </p>
-          <p>
-            SMS is optional and requires affirmative consent. We record the
-            consent version, timestamp, authorized number, and relevant transaction
-            or management preference. We retain delivery records and opt-out
-            suppression information to honor STOP requests and prevent duplicate
-            messages. Reply STOP to opt out or HELP for help.
-          </p>
-          <p>
-            Mobile numbers and SMS opt-in consent are not shared with third
-            parties or affiliates for marketing or promotional purposes.
-            Communications providers receive information needed to deliver
-            and secure the requested transactional messages.
-          </p>
+          <h2>5. Optional browser notifications</h2>
+          <p>When a manager enables notifications, we store the browser push endpoint and encryption keys with the manager, business, and signed-in session. Browser push services process the subscription and notification to deliver it. Push payloads contain generic ACH status messages, without payer names, banking details, unit references, or payment amounts.</p>
+          <p>Permission is optional and can be revoked in browser settings. Managers can disable the device subscription in their dashboard. Signing out stops eligibility for that session. Delivery is not guaranteed; check the dashboard for current payment status.</p>
+          <p>RentFrayLite no longer sends SMS. Historical consent, opt-out, and delivery evidence is retained as required for security, dispute handling, and applicable retention obligations. Historical mobile numbers and SMS consent are not used for unrelated marketing.</p>
         </section>
 
         <section>
@@ -168,7 +147,7 @@ export default function PrivacyPage() {
               needed to process or administer payments.
             </li>
             <li>
-              Twilio, mobile carriers, and communications providers
+              Browser push services and communications providers
               needed to deliver transactional messages.
             </li>
             <li>
@@ -194,7 +173,7 @@ export default function PrivacyPage() {
           </ul>
           <p>
             RentFrayLite does not sell personal information for money.
-            We do not use transactional SMS consent for unrelated
+            We do not use notification permission or historical SMS consent for unrelated
             marketing.
           </p>
         </section>

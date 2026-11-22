@@ -3,7 +3,7 @@ import test from "node:test";
 import { harness, postgres } from "./helpers/checkout-harness.mjs";
 
 const backends = postgres ? ["isolated", "postgres"] : ["isolated"];
-for (const backend of backends) for (const method of ["ACH", "CARD"]) {
+for (const backend of backends) for (const method of ["ACH"]) {
   const label = `${backend} ${method}`;
   const records = async (h, checkout) => ({
     payment: (await h.payments())[0], checkout: await h.db.checkoutSession.findUnique({ where: { id: checkout.id } }),

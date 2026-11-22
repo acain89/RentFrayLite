@@ -74,6 +74,8 @@ export async function POST(request: Request) {
     );
   }
 
+  if (checkoutSession.paymentMethod !== PaymentMethod.ACH) return NextResponse.json({ error: "Only ACH bank-account payments are accepted. Please begin a new payment." }, { status: 400 });
+
   if (!checkoutSession.paymentId && !checkoutSession.stripeCheckoutSessionId &&
       !await hasCheckoutQuoteAccess(checkoutSession.id)) {
     return NextResponse.json({ error: "Checkout authorization unavailable. Please begin again." }, {
@@ -258,11 +260,7 @@ export async function POST(request: Request) {
       await stripe.checkout.sessions.create(
         {
           mode: "payment",
-          payment_method_types:
-            checkoutSession.paymentMethod ===
-            PaymentMethod.ACH
-              ? ["us_bank_account"]
-              : ["card"],
+          payment_method_types: ["us_bank_account"],
           line_items: stripeLineItems,
           success_url:
             `${origin}/payment/success?session_id={CHECKOUT_SESSION_ID}&accountCode=${encodeURIComponent(

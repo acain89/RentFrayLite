@@ -17,8 +17,8 @@ for(const value of valid)test(`US phone normalizes on client and server: ${value
   for(const consent of [false,true]){
     const f=managementBillingHarness(),response=await f.load('app/api/setup/route.ts').POST(f.request(account({contactPhone:value,smsConsent:consent})));
     assert.equal(response.status,201);const business=f.state().businesses[0];assert.equal(business.contactPhone,'+13125551234');
-    assert.equal(business.smsConsentPhone,consent?'+13125551234':null);assert.equal(!!business.smsConsentAt,consent);
-    assert.equal(business.smsConsentVersion,consent?f.load('lib/smsConsent.ts').SMS_CONSENT_VERSION:null);
+    assert.equal(business.smsConsentPhone,undefined);assert.equal(business.smsConsentAt,undefined);
+    assert.equal(business.smsConsentVersion,undefined);
   }
 });
 const invalid=['123-555-1234','312-155-1234','312-555-123','312-555-12345','+44 20 7946 0958','+31 255 51234','3125551234abc','3125551234 ext 9','++13125551234','2'.repeat(31),null,123];
@@ -32,9 +32,8 @@ for(const [i,value] of invalid.entries())test(`invalid phone rejects, without si
 for(const value of [undefined,'','   '])test(`empty optional phone: ${JSON.stringify(value)}`,async()=>{
  for(const smsConsent of [false,true]){
  const f=managementBillingHarness(),response=await f.load('app/api/setup/route.ts').POST(f.request(account({contactPhone:value,smsConsent})));
- assert.equal(response.status,smsConsent?400:201);
- if(smsConsent){assert.equal((await response.json()).error,phone.REGISTRATION_SMS_PHONE_REQUIRED);assert.deepEqual(f.writes,[]);}
- else{assert.equal(f.state().businesses[0].contactPhone,undefined);assert.equal(f.state().businesses[0].smsConsentAt,null);}
+ assert.equal(response.status,201);
+ assert.equal(f.state().businesses[0].contactPhone,undefined);assert.equal(f.state().businesses[0].smsConsentAt,undefined);
  }
 });
 test('partial formatting preserves invalid/overflow input for correction',()=>{
@@ -48,16 +47,16 @@ test('Step 1 retains dependent name, one email, timezone and security controls',
  assert.match(html,/Cell Phone Number/);assert.match(html,/XXX-XXX-XXXX/);assert.match(html,/Optional/);
  assert.equal((html.match(/type="email"/g)||[]).length,1);
  assert.doesNotMatch(html,/Set up your property|Manager Login|Account password|Payment SMS Notifications default|push notifications/i);
- for(const text of ['RentFrayLite payment updates','STOP','HELP','Frequency varies','Msg &amp; data rates may apply','Consent isn&#x27;t required to sign up','registration-password-rules','Confirm password','Step 1 of 4'])assert.ok(html.includes(text),text);
+ for(const text of ['registration-password-rules','Confirm password','Step 1 of 4'])assert.ok(html.includes(text),text);
  for(const zone of h.load('lib/managementBillingSetup.ts').PROPERTY_TIME_ZONE_OPTIONS)assert.ok(html.includes(zone.value));
- assert.match(html,/name="smsConsent"/);assert.doesNotMatch(html,/<input[^>]*name="smsConsent"[^>]*checked/);
+ assert.doesNotMatch(html,/name="smsConsent"/);
  assert.match(html,/href="\/terms"/);assert.match(html,/href="\/privacy"/);
 });
 test('registration cannot omit the required account name',()=>{
  assert.equal(h.load('lib/validators.ts').setupAccountSchema.safeParse(account({ownerName:undefined})).success,false);
 });
 
-test('mobile and desktop UI block invalid SMS, format phone, submit canonical number without providers',async()=>{
+test('mobile and desktop UI preserve phone validation without SMS enrollment',async()=>{
  const {chromium,expect}=await import('@playwright/test');
  const result=await build({stdin:{contents:"import React from 'react';import{createRoot}from'react-dom/client';import Client from './app/setup/SetupAccountClient.tsx';createRoot(document.getElementById('root')).render(React.createElement(Client));",resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'browser',jsx:'automatic',plugins:[{name:'local-ui',setup(b){
  b.onResolve({filter:/^next\/(link|navigation)$/},a=>({path:a.path,namespace:'fixture'}));
@@ -72,7 +71,7 @@ test('mobile and desktop UI block invalid SMS, format phone, submit canonical nu
  const request=route.request(),url=new URL(request.url());
  if(url.origin!=='https://example.test'){external.push(url.origin);return route.abort();}
  if(url.pathname==='/api/setup'){
- apiCalls++;const submitted=JSON.parse(request.postData());assert.equal(submitted.contactPhone,'+13125551234');assert.equal(submitted.smsConsent,true);
+ apiCalls++;const submitted=JSON.parse(request.postData());assert.equal(submitted.contactPhone,'+13125551234');assert.equal(submitted.smsConsent,undefined);
  assert.equal(submitted.email,'manager@example.test');assert.equal(Object.hasOwn(submitted,'managerEmail'),false);
  const response=await f.load('app/api/setup/route.ts').POST(f.request(submitted));return route.fulfill({status:response.status,contentType:'application/json',body:await response.text()});
  }
@@ -82,34 +81,24 @@ test('mobile and desktop UI block invalid SMS, format phone, submit canonical nu
  await page.getByLabel('Business Name',{exact:true}).fill('Test Property');await page.getByLabel('Your name',{exact:true}).fill('Test Manager');
  await page.getByLabel('Email',{exact:true}).fill('manager@example.test');
  await page.getByLabel('Password',{exact:true}).fill('Abcdef12');await page.getByLabel('Confirm password',{exact:true}).fill('Abcdef12');
- await page.locator('input[name="acceptedTerms"]').check();await page.locator('input[name="smsConsent"]').check();
- await expect(page.locator('#registration-phone-error')).toHaveText(phone.REGISTRATION_SMS_PHONE_REQUIRED);
- await expect(page.locator('#contactPhone')).toHaveAttribute('aria-describedby','registration-phone-error');
- await page.getByRole('button',{name:'Continue',exact:true}).click();await expect(page.locator('#registration-phone-error')).toHaveText(phone.REGISTRATION_SMS_PHONE_REQUIRED);assert.equal(apiCalls,0);
- const input=page.locator('#contactPhone');await expect(input).toHaveAttribute('aria-invalid','true');
- await input.fill('312555123');await page.getByRole('button',{name:'Continue',exact:true}).click();await expect(page.locator('#registration-phone-error')).toHaveText(phone.REGISTRATION_SMS_PHONE_REQUIRED);assert.equal(apiCalls,0);
- await page.locator('input[name="smsConsent"]').uncheck();
+ await page.locator('input[name="acceptedTerms"]').check();
+ const input=page.locator('#contactPhone');
  await expect(page.locator('#registration-phone-error')).toHaveCount(0);
  await input.fill('312555123');await page.getByRole('button',{name:'Continue',exact:true}).click();
  await expect(page.locator('#registration-phone-error')).toHaveText(phone.REGISTRATION_PHONE_INVALID);assert.equal(apiCalls,0);
+ await expect(input).toHaveAttribute('aria-invalid','true');
  await input.fill('');await expect(page.locator('#registration-phone-error')).toHaveCount(0);assert.equal(await input.evaluate(el=>el.required),false);
- await page.locator('input[name="smsConsent"]').check();
- await expect(page.locator('#registration-phone-error')).toHaveText(phone.REGISTRATION_SMS_PHONE_REQUIRED);
  await input.fill('+1 (312) 555-1234');await expect(input).toHaveValue('312-555-1234');
  await expect(page.locator('#registration-phone-error')).toHaveCount(0);
- await page.locator('input[name="smsConsent"]').uncheck();await page.locator('input[name="smsConsent"]').check();
  await expect(page.locator('#registration-phone-error')).toHaveCount(0);
- await expect(page.getByRole('link',{name:'SMS Terms',exact:true})).toHaveAttribute('href','/terms');
- await expect(page.getByRole('link',{name:'Privacy',exact:true})).toHaveAttribute('href','/privacy');
+ await expect(page.getByRole('link',{name:'Terms of Service',exact:true})).toHaveAttribute('href','/terms');
+ await expect(page.getByRole('link',{name:'Privacy Policy',exact:true})).toHaveAttribute('href','/privacy');
  const zone=page.locator('.rfl-registration-timezone');
  await expect(zone).toHaveCSS('background-color','rgb(237, 245, 252)');
  await expect(zone).toHaveCSS('padding-top','16px');await expect(zone).toHaveCSS('border-radius','14px');
- await expect(page.locator('input[name="smsConsent"]')).not.toHaveAttribute('required','');
  await expect(page.locator('input[name="acceptedTerms"]')).toHaveAttribute('required','');
- await expect(page.locator('#registration-sms-disclosure')).toHaveCSS('font-size','12px');
- await expect(page.locator('#registration-sms-disclosure')).toContainText("Consent isn't required to sign up.");
- assert.ok(readFileSync('app/terms/page.tsx','utf8').includes('Payment-status SMS'));
- assert.ok(readFileSync('app/privacy/page.tsx','utf8').includes('Twilio and SMS'));
+ assert.ok(readFileSync('app/terms/page.tsx','utf8').includes('Optional manager notifications'));
+ assert.ok(readFileSync('app/privacy/page.tsx','utf8').includes('Optional browser notifications'));
  await expect(zone.locator('.rfl-field-help')).toHaveText('Select the time zone the property is located in.');
  await expect(zone.locator('.rfl-field-help')).toHaveCSS('font-weight','600');
  await expect(zone.locator('select')).toHaveValue('America/Chicago');
@@ -118,6 +107,6 @@ test('mobile and desktop UI block invalid SMS, format phone, submit canonical nu
  for(const selector of ['#contactPhone','#registration-password-rules','#confirmPassword'])await expect(page.locator(selector)).toBeVisible();
  await page.screenshot({path:`../evidence/registration-${width}.png`,fullPage:true});
  await page.getByRole('button',{name:'Continue',exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__redirect)).toBe('/setup/recurring/tiers');
- assert.equal(apiCalls,1);assert.equal(f.state().businesses[0].contactPhone,'+13125551234');assert.equal(f.state().businesses[0].smsConsentPhone,'+13125551234');assert.deepEqual(external,[]);await page.close();
+ assert.equal(apiCalls,1);assert.equal(f.state().businesses[0].contactPhone,'+13125551234');assert.equal(f.state().businesses[0].smsConsentPhone,undefined);assert.deepEqual(external,[]);await page.close();
  }}finally{await instance.close();}
 });

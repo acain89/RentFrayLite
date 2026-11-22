@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { logOperationalError } from "@/lib/operationalLogging";
-import { projectSmsDelivery, SMS_REPORT_SELECT, TENANT_RECEIPT_NOTIFICATION } from "@/lib/smsDeliveryReporting";
 import { CUSTOMER_REFUND_REPORT_SELECT, loadReportingDisputeOutcome, projectPaymentOutcome } from "@/lib/paymentReportingOutcome";
 import {
   getPaymentResultAccessToken,
@@ -51,8 +50,6 @@ export async function getPaymentResult(accountCodeInput: unknown, stripeSessionI
       returnedAt: true, disputedAt: true,
       customerRefunds: { select: CUSTOMER_REFUND_REPORT_SELECT },
       business: { select: { id: true, name: true, accountCode: true, propertyTimeZone: true } },
-      smsReceipt: { select: { status: true } },
-      smsNotifications: { where: TENANT_RECEIPT_NOTIFICATION, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1, select: SMS_REPORT_SELECT },
     },
   }));
   if (
@@ -65,6 +62,5 @@ export async function getPaymentResult(accountCodeInput: unknown, stripeSessionI
   ) return null;
 
   const outcome = projectPaymentOutcome({ ...payment, disputeOutcome: await resultStorage(payment.id, () => loadReportingDisputeOutcome(prisma, payment)) });
-  const smsDelivery = projectSmsDelivery(payment.smsNotifications?.[0], payment.smsReceipt);
-  return { payment, outcome, smsDelivery, accountCode, stripeSessionId };
+  return { payment, outcome, accountCode, stripeSessionId };
 }

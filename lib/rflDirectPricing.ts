@@ -7,7 +7,7 @@
 export const RFL_DIRECT_PRICING_VERSION = "RFL_DIRECT_V1" as const;
 export const PLANNING_PERCENTAGE_ROUNDING = "HALF_UP_NON_NEGATIVE" as const;
 
-export type RflDirectPaymentMethod = "ACH" | "CARD";
+export type RflDirectPaymentMethod = "ACH";
 export type RflDirectPricing = Readonly<{
   pricingVersion: typeof RFL_DIRECT_PRICING_VERSION;
   paymentMethod: RflDirectPaymentMethod;
@@ -58,15 +58,11 @@ export function priceRflDirectV1(input: Readonly<{
 }>): RflDirectPricing {
   const { managementOwedCents, paymentMethod } = input;
   requireObligation(managementOwedCents);
-  if (paymentMethod !== "ACH" && paymentMethod !== "CARD") throw new TypeError("Unsupported payment method.");
+  if (paymentMethod !== "ACH") throw new TypeError("Unsupported payment method.");
   const bandNumber = safeNumber((BigInt(managementOwedCents) + BigInt(2499)) / BigInt(2500));
-  const tenantProcessingFeeCents = paymentMethod === "CARD"
-    ? 200 + 100 * (bandNumber - 1)
-    : Math.min(995, 100 + 50 * (bandNumber - 1));
+  const tenantProcessingFeeCents = Math.min(995, 100 + 50 * (bandNumber - 1));
   const tenantTotalCents = managementOwedCents + tenantProcessingFeeCents;
-  const expectedStripeProcessingFeeCents = paymentMethod === "CARD"
-    ? roundPlanningPercentageCents(tenantTotalCents, 29, 1000) + 30
-    : Math.min(500, roundPlanningPercentageCents(tenantTotalCents, 8, 1000));
+  const expectedStripeProcessingFeeCents = Math.min(500, roundPlanningPercentageCents(tenantTotalCents, 8, 1000));
   const rflApplicationFeeCents = tenantProcessingFeeCents - expectedStripeProcessingFeeCents;
   const expectedManagementNetCents = tenantTotalCents - expectedStripeProcessingFeeCents - rflApplicationFeeCents;
   if (rflApplicationFeeCents < 0 || expectedManagementNetCents !== managementOwedCents) {

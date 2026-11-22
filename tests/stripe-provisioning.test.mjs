@@ -68,7 +68,7 @@ for(const backend of postgres?['isolated','postgres']:['isolated']){
  });
  test(label+': prepared DIRECT profile requests Stripe-controlled policy but existing Express is never replaced',async()=>{
   const f=await provisioningFixture(backend),service=f.load('lib/stripeAccountProvisioning.ts');
-  const params=service.accountProvisioningParameters('DIRECT',{businessId:f.identity.businessId,provisioningId:'future-operation',email:'synthetic@example.test',name:'Future property'});assert.equal(params.type,undefined);assert.deepEqual(params.controller,{fees:{payer:'account'},losses:{payments:'stripe'},requirement_collection:'stripe',stripe_dashboard:{type:'full'}});assert.deepEqual(params.capabilities,{card_payments:{requested:true},us_bank_account_ach_payments:{requested:true}});
+  const params=service.accountProvisioningParameters('DIRECT',{businessId:f.identity.businessId,provisioningId:'future-operation',email:'synthetic@example.test',name:'Future property'});assert.equal(params.type,undefined);assert.deepEqual(params.controller,{fees:{payer:'account'},losses:{payments:'stripe'},requirement_collection:'stripe',stripe_dashboard:{type:'full'}});assert.deepEqual(params.capabilities,{us_bank_account_ach_payments:{requested:true}});
   assert.equal((await f.connect()).status,200);const before=await f.db.stripeConnection.findUnique({where:{businessId:f.identity.businessId}});
   const existing=await service.provisionStripeConnectedAccount(f.identity,f.stripe,'DIRECT',{platformAccountId:'acct_platform',mode:'test'});assert.equal(existing.id,before.id);assert.equal(f.state.accounts.size,1);assert.equal(f.state.createCalls.length,1);
  });

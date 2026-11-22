@@ -20,6 +20,7 @@ export function prepareDirectCheckoutOwnership(report: DirectReadinessReport, in
   managementOwedCents: number; paymentMethod: PaymentMethod;
 }) {
   if (!input.checkoutAttemptId || input.checkoutAttemptId.length > 100) throw Error("A durable server checkout attempt ID is required.");
+  if (input.paymentMethod !== "ACH") throw new RangeError("Only ACH payments are accepted.");
   const owner = verifiedDirectOwnership(report, input.identity, input.connectedAccountId);
   const pricing = priceRflDirectV1({ managementOwedCents: input.managementOwedCents, paymentMethod: input.paymentMethod });
   const snapshot = Object.freeze({ pricingVersion: pricing.pricingVersion, chargeModel: "DIRECT" as const,
@@ -89,7 +90,7 @@ export function prepareDirectCheckoutQuote(report: DirectReadinessReport, input:
   return Object.freeze({ id: input.checkoutAttemptId, businessId: property.id, accountCode: property.accountCode, sourceType: source.sourceType,
     paymentMethod, ...amounts, platformFeeCents: prepared.pricing.tenantProcessingFeeCents, totalCents: prepared.pricing.tenantTotalCents,
     ...prepared.snapshot, lineItems: Object.freeze([...lineItems,
-      { type: "PLATFORM_FEE", label: paymentMethod === "ACH" ? "ACH processing fee" : "Card processing fee", amountCents: prepared.pricing.tenantProcessingFeeCents },
+      { type: "PLATFORM_FEE", label: "ACH processing fee", amountCents: prepared.pricing.tenantProcessingFeeCents },
     ].map(item => Object.freeze({ ...item }))) });
 }
 
@@ -133,7 +134,7 @@ export function prepareDirectCheckoutRequest(checkout: CheckoutSession, payment:
     billingCycle: payment.billingCycle ?? "", pricingVersion: payment.pricingVersion!, chargeModel: "DIRECT",
     stripePlatformAccountId: context.platformAccountId, stripeConnectedAccountId: context.connectedAccountId, stripeMode: context.mode };
   const params: Stripe.Checkout.SessionCreateParams = {
-    mode: "payment", payment_method_types: [payment.paymentMethod === "ACH" ? "us_bank_account" : "card"],
+    mode: "payment", payment_method_types: ["us_bank_account"],
     line_items: items, client_reference_id: payment.id, metadata,
     success_url: `${url.origin}/payment/success?session_id={CHECKOUT_SESSION_ID}&accountCode=${encodeURIComponent(checkout.accountCode)}`,
     cancel_url: `${url.origin}/${encodeURIComponent(checkout.accountCode)}/review?session=${encodeURIComponent(checkout.id)}`,

@@ -78,7 +78,6 @@ export function evaluateStripeChargeReadiness(input: ChargeReadinessInput): Char
       if (!account.country || !account.default_currency) unverified();
       else if (account.country !== "US" || account.default_currency !== "usd") add("DIRECT_REGION_UNSUPPORTED");
       for (const [value, code] of [
-        [account.capabilities?.card_payments, "CARD_NOT_ENABLED"],
         [account.capabilities?.us_bank_account_ach_payments, "ACH_NOT_ENABLED"],
       ] as const) {
         if (value === "pending") add(code.replace("NOT_ENABLED", "PENDING"));
@@ -116,7 +115,6 @@ export function evaluateStripeChargeReadiness(input: ChargeReadinessInput): Char
         else if (methods.accountId !== input.connectedAccountId) add("ACCOUNT_MISMATCH");
         if (methods.mode !== "live" && methods.mode !== "test") unverified();
         else if (methods.mode !== evidence.accountMode || (input.mode !== "unknown" && methods.mode !== input.mode)) add("MODE_MISMATCH");
-        check(methods.cardAvailable ?? undefined, "CARD_NOT_ENABLED");
         check(methods.achAvailable ?? undefined, "ACH_NOT_ENABLED");
       }
     }

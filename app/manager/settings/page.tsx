@@ -1,4 +1,3 @@
-import PaymentSmsSettings from "./PaymentSmsSettings";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireManager } from "@/lib/auth";
@@ -69,7 +68,6 @@ export default async function ManagerSettingsPage() {
           </Link>
         </nav>
 
-        <PaymentSmsSettings initialEnabled={business.paymentSmsEnabled === true} initialPhone={business.contactPhone ?? ""} hasConsent={!!business.smsConsentAt} />
 
         <section className="rfl-settings-one-time">
           <div className="rfl-settings-one-time-copy">

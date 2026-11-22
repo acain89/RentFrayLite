@@ -6,7 +6,7 @@ const review = (h, q) => h.load('app/[accountCode]/review/page.tsx').default({
   params: Promise.resolve({ accountCode: q.accountCode }), searchParams: Promise.resolve({ session: q.id }),
 });
 const quoteKey = h => [...h.cookieJar.keys()].find(k => k.startsWith('rfl_checkout_'));
-for (const method of ['ACH', 'CARD']) for (const sourceType of ['RECURRING_PLAN', 'CUSTOM_PAYMENT']) {
+for (const method of ["ACH"]) for (const sourceType of ['RECURRING_PLAN', 'CUSTOM_PAYMENT']) {
   const label = `${method} ${sourceType}`;
   const fixture = async () => {
     const clock = { now: '2026-11-08T18:00:00Z' };

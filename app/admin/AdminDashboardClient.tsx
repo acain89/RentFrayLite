@@ -6,7 +6,6 @@ import ManagementPasswordChecklist from "@/components/ManagementPasswordChecklis
 import { isNewManagementPassword, MANAGEMENT_PASSWORD_REQUIREMENT, MANAGEMENT_PASSWORD_MIN_LENGTH } from "@/lib/managementPasswordPolicy";
 
 import type { AdminDashboardData } from "@/lib/adminDashboard";
-import { SMS_DELIVERY_STATES, type SmsDeliveryMetric } from "@/lib/smsDeliveryReporting";
 
 type BusinessSearchResult = {
   id: string;
@@ -383,18 +382,6 @@ async function deleteBusiness(): Promise<void> {
           <h2>Issues</h2>
         </div>
 
-        <article className="rfl-admin-table-section">
-          <h3>SMS Delivery</h3>
-          <p>Current recorded outcomes by last update (UTC), not send attempts. Counts show total (tenant / management / legacy tenant / unknown recipient). Legacy aliases are excluded; a different known message remains separate. Unkeyed legacy receipts defer to the payment&apos;s tenant-success outbox. Historical failures without reliable delivery evidence are unknown. Sent means provider accepted, not confirmed delivered.</p>
-          <MetricTable
-            columns={["Today (UTC)", "This Month (UTC)", "All Time"]}
-            rows={SMS_DELIVERY_STATES.map(state => ({
-              label: state === "SENT" ? "Sent (provider accepted)" : state.charAt(0) + state.slice(1).toLowerCase(),
-              values: [dashboard.issues.smsDelivery.today, dashboard.issues.smsDelivery.month, dashboard.issues.smsDelivery.allTime].map((m: SmsDeliveryMetric) =>
-                `${m.total[state]} (${m.tenant[state]} / ${m.management[state]} / ${m.legacy[state]} / ${m.unknownRecipient[state]})`),
-            }))}
-          />
-        </article>
 
         <article className="rfl-admin-table-section">
           <h3>ACH Returns</h3>

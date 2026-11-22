@@ -2,7 +2,7 @@
  * RentFrayLite platform fee engine.
  *
  * All monetary values are integer cents.
- * This file is the single source of truth for ACH fees, card fees,
+ * This file is the single source of truth for ACH fees,
  * and the maximum online payment amount.
  */
 
@@ -29,28 +29,6 @@ const ACH_FEE_TIERS = [
 
 const ACH_MAX_FEE_CENTS = 995;
 
-const CARD_FEE_TIERS = [
-  { maxAmountCentsExclusive: 10_000, feeCents: 300 },
-  { maxAmountCentsExclusive: 20_000, feeCents: 700 },
-  { maxAmountCentsExclusive: 30_000, feeCents: 1_100 },
-  { maxAmountCentsExclusive: 40_000, feeCents: 1_500 },
-  { maxAmountCentsExclusive: 50_000, feeCents: 1_900 },
-  { maxAmountCentsExclusive: 60_000, feeCents: 2_300 },
-  { maxAmountCentsExclusive: 70_000, feeCents: 2_700 },
-  { maxAmountCentsExclusive: 80_000, feeCents: 3_100 },
-  { maxAmountCentsExclusive: 90_000, feeCents: 3_500 },
-  { maxAmountCentsExclusive: 100_000, feeCents: 3_900 },
-  { maxAmountCentsExclusive: 125_000, feeCents: 4_900 },
-  { maxAmountCentsExclusive: 150_000, feeCents: 5_900 },
-  { maxAmountCentsExclusive: 200_000, feeCents: 7_400 },
-  { maxAmountCentsExclusive: 250_000, feeCents: 9_400 },
-  { maxAmountCentsExclusive: 300_000, feeCents: 11_400 },
-  { maxAmountCentsExclusive: 350_000, feeCents: 13_400 },
-  { maxAmountCentsExclusive: 400_000, feeCents: 15_400 },
-  { maxAmountCentsExclusive: 450_000, feeCents: 17_400 },
-] as const satisfies readonly FeeTier[];
-
-const CARD_MAX_FEE_CENTS = 19_400;
 
 function assertValidSubtotalCents(subtotalCents: number): void {
   if (!Number.isSafeInteger(subtotalCents) || subtotalCents < 0) {
@@ -92,34 +70,12 @@ export function getAchPlatformFeeCents(subtotalCents: number): number {
   );
 }
 
-export function getCardPlatformFeeCents(subtotalCents: number): number {
-  return getTieredFeeCents(
-    subtotalCents,
-    CARD_FEE_TIERS,
-    CARD_MAX_FEE_CENTS
-  );
-}
-
 export function getTotalWithAchFeeCents(subtotalCents: number): {
   subtotalCents: number;
   platformFeeCents: number;
   totalCents: number;
 } {
   const platformFeeCents = getAchPlatformFeeCents(subtotalCents);
-
-  return {
-    subtotalCents,
-    platformFeeCents,
-    totalCents: subtotalCents + platformFeeCents,
-  };
-}
-
-export function getTotalWithCardFeeCents(subtotalCents: number): {
-  subtotalCents: number;
-  platformFeeCents: number;
-  totalCents: number;
-} {
-  const platformFeeCents = getCardPlatformFeeCents(subtotalCents);
 
   return {
     subtotalCents,

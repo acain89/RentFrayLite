@@ -11,7 +11,7 @@ const require=createRequire(import.meta.url), root=path.resolve(import.meta.dirn
 const compiled=new Map(), initialHash=await bcrypt.hash('old-password',12), adminHash=await bcrypt.hash('482731',12);
 const clone=x=>structuredClone(x);
 function isolated(){
- let state={instantPayoutRequest:[],verificationToken:[],manager:[],adminAccess:[],business:[],session:[],auditLog:[],stripeConnection:[],stripeAccountProvisioning:[]},queue=Promise.resolve();const failures=new Set();
+ let state={managerPushSubscription:[],instantPayoutRequest:[],verificationToken:[],manager:[],adminAccess:[],business:[],session:[],auditLog:[],stripeConnection:[],stripeAccountProvisioning:[]},queue=Promise.resolve();const failures=new Set();
  const matches=(r,w={})=>Object.entries(w).every(([k,v])=>v && typeof v === 'object' && 'gt' in v ? r[k]>v.gt : r[k]===v);
  const defer=fn=>({then:(yes,no)=>Promise.resolve().then(fn).then(yes,no),execute:fn});
  const db={failures,now:new Date(),$queryRaw:async q=>{if(/clock_timestamp/.test(q.sql))return [{now:db.now}];assert.match(q.sql,/FOR (?:NO KEY )?UPDATE|pg_advisory_xact_lock/);return [];}};
@@ -27,6 +27,7 @@ function isolated(){
   findUnique:({where,include})=>defer(()=>hydrate(name,state[name].find(r=>matches(r,where)),include)),
   count:({where={}}={})=>defer(()=>state[name].filter(r=>matches(r,where)).length),
   findMany:({where={}}={})=>defer(()=>clone(state[name].filter(r=>matches(r,where)))),
+  upsert:({where,create,update})=>defer(()=>{const row=state[name].find(r=>matches(r,where));if(row){Object.assign(row,clone(update));return clone(row);}const fresh={id:randomUUID(),createdAt:new Date(),updatedAt:new Date(),active:true,...clone(create)};state[name].push(fresh);return clone(fresh);}),
   update:({where,data})=>defer(()=>{if(failures.has(name+'.update'))throw Error('Injected update failure');const r=state[name].find(r=>matches(r,where));if(!r)throw Error('Record not found');Object.assign(r,clone(data));return clone(r);}),
   updateMany:({where,data})=>defer(()=>{let count=0;for(const r of state[name].filter(r=>matches(r,where))){Object.assign(r,clone(data));count++;}return {count};}),
   deleteMany:({where={}}={})=>defer(()=>{if(failures.has(name+'.deleteMany'))throw Error('Injected revoke failure');const rows=state[name].filter(r=>matches(r,where));state[name]=state[name].filter(r=>!matches(r,where));return {count:rows.length};}),

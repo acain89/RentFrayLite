@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { PaymentStatus } from "@prisma/client";
-import { smsReceiptMessage } from "@/lib/smsDeliveryReporting";
 import { notFound } from "next/navigation";
 import { getPaymentResult } from "@/lib/paymentResult";
 import { formatReportingTimestamp, reportingTimeZone } from "@/lib/reportingCalendar";
@@ -106,7 +105,6 @@ export default async function PaymentSuccessPage({ searchParams }: Props) {
           <div><span>Observed customer refunds</span><strong>{outcome.customerRefundCents === null ? "Unknown / unavailable" : money(outcome.customerRefundCents)}</strong></div>
           {outcome.pendingCustomerRefundCents !== null && outcome.pendingCustomerRefundCents > 0 && <div><span>Refund pending</span><strong>{money(outcome.pendingCustomerRefundCents)}</strong></div>}
         </div>
-        {payment.status === PaymentStatus.PAID && outcome.refundState === "UNKNOWN" && !outcome.disputeOutcome && <p className="rfl-payment-result-message">{smsReceiptMessage(result.smsDelivery)}</p>}
         <div className="rfl-payment-result-actions">
           <a className="rfl-primary-button" href={refreshUrl}>Refresh payment status</a>
           <a href={`/${encodeURIComponent(accountCode)}`}>Return to business payment page</a>

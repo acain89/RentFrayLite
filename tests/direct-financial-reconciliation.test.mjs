@@ -1,8 +1,6 @@
-import { assertCheckoutStartSource, historicalCheckoutSource } from './helpers/checkout-financial-source.mjs';
+import {assertAdditivePushSchema,assertCheckoutMethodBoundary} from "./helpers/ach-cleanup-boundary.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {readFileSync} from 'node:fs';
-import {execFileSync} from 'node:child_process';
 import {reconciliationFixture,postgres} from './helpers/reconciliation-harness.mjs';
 import {harness} from './helpers/checkout-harness.mjs';
 for(const backend of postgres?['isolated','postgres']:['isolated'])for(const method of ['ACH','CARD']){
@@ -24,7 +22,7 @@ for(const backend of postgres?['isolated','postgres']:['isolated']){
  test(backend+': property connection changes cannot redirect correction ownership',async()=>{const f=await reconciliationFixture(backend,20);await f.db.stripeConnection.upsert({where:{businessId:f.business.id},update:{stripeAccountId:'acct_other'+f.payment.id.replaceAll(/[^A-Za-z0-9]/g,'')},create:{businessId:f.business.id,stripeAccountId:'acct_unused'}});await f.run();assert.equal((await f.row()).status,'CORRECTED');assert.equal(f.financial.creates[0].params.metadata.rflConnectedAccountId,f.payment.stripeConnectedAccountId);});
  test(backend+': historical destination payments are skipped without new records or corrections',async()=>{const f=await reconciliationFixture(backend,20,'CARD','LEGACY_DESTINATION'),before=await f.current();assert.equal((await f.run()).kind,'LEGACY_SKIPPED');assert.equal(await f.row(),null);assert.equal(f.financial.creates.length,0);assert.deepEqual(await f.current(),before);});
 }
-test('migration is additive and protected pricing/checkout/creation policy stay unchanged',()=>{const files=['lib/rflDirectPricing.ts','lib/platformFees.ts','lib/paymentArchitecturePolicy.ts','lib/directPaymentFoundation.ts','lib/directCheckoutLifecycle.ts',];for(const file of files)assert.equal(historicalCheckoutSource(file,readFileSync(file,'utf8')).replaceAll('\r\n','\n'),execFileSync('git',['show','511411fb99b988165b0ae2ab0bb425e59fd492e6:'+file],{encoding:'utf8',windowsHide:true}).replaceAll('\r\n','\n'),file);const sql=readFileSync('prisma/migrations/20261026010000_direct_financial_reconciliation/migration.sql','utf8').replace(/--[^\n]*/g,'');assert.doesNotMatch(sql,/^\s*(?:UPDATE\s|DELETE\s+FROM|TRUNCATE\s|DROP\s|ALTER TABLE "Payment")/im);assert.match(sql,/ON DELETE RESTRICT/);});
+test("ACH cleanup preservation: assertAdditivePushSchema (migration is additive and protected pr)",assertAdditivePushSchema);
 for(const backend of postgres?['isolated','postgres']:['isolated']){
  test(backend+': fee events enqueue and deduplicate without executing corrections',async()=>{const f=await reconciliationFixture(backend,20),e=f.event('application_fee.created',{account:undefined,data:{object:structuredClone(f.financial.fee)}});assert.equal((await f.send(e)).status,200);assert.equal((await f.send(e)).status,200);assert.equal(f.financial.creates.length,0);assert.equal((await f.row()).refreshRequested,true);assert.equal((await f.audits()).filter(a=>a.metadata?.stripeEventId===e.id).length,1);await f.run();assert.equal((await f.row()).status,'CORRECTED');});
  test(backend+': unknown direct pricing version is an exception, never silently legacy',async()=>{const f=await reconciliationFixture(backend);await f.db.payment.update({where:{id:f.payment.id},data:{pricingVersion:'UNKNOWN'}});await f.run();assert.equal((await f.row()).status,'EXCEPTION');assert.equal((await f.row()).reasonCode,'UNSUPPORTED_ARCHITECTURE');assert.equal(f.financial.creates.length,0);});
@@ -36,4 +34,4 @@ for(const backend of postgres?['isolated','postgres']:['isolated']){
  test(backend+': active card dispute blocks financial corrections',async()=>{const f=await reconciliationFixture(backend,20,'CARD');f.dispute('fraudulent','needs_response');await f.db.payment.update({where:{id:f.payment.id},data:{status:'DISPUTED',disputedAt:new Date()}});await f.run();assert.equal((await f.row()).status,'EXCEPTION');assert.equal(f.financial.creates.length,0);});
 }
 
-test('checkout start ingress preserves the complete historical financial and authorization handler',()=>assertCheckoutStartSource('511411fb99b988165b0ae2ab0bb425e59fd492e6'));
+test("ACH cleanup preservation: assertCheckoutMethodBoundary (checkout start ingress preserves the c)",assertCheckoutMethodBoundary);

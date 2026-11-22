@@ -17,7 +17,7 @@ export default function ManagerHistoryClient(p:Props){
       <label>Tenant name<input name="name" aria-label="Tenant name" maxLength={100} defaultValue={p.filters.name}/></label>
       <label>Unit number<input name="unit" maxLength={100} defaultValue={p.filters.unit}/></label>
       <label>From date<input name="from" type="date" defaultValue={p.filters.from}/></label><label>To date<input name="to" type="date" defaultValue={p.filters.to}/></label>
-      <label>Payment method<select aria-label="Payment method" name="method" defaultValue={p.filters.method}><option value="ALL">All</option><option value="ACH">ACH</option><option value="CARD">Card</option></select></label>
+      <label>Payment method<select aria-label="Payment method" name="method" defaultValue={p.filters.method}><option value="ALL">All</option><option value="ACH">ACH</option></select></label>
       <label>Payment status<select aria-label="Payment status" name="status" defaultValue={p.filters.status}>{[["ALL","All"],["PENDING","Pending"],["SUCCESSFUL","Paid records (includes refunds)"],["FAILED","Failed (including returns and disputes)"],["RETURNED","Returned records"],["DISPUTED","Disputed records"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
       <label>Payment type<select aria-label="Payment type" name="type" defaultValue={p.filters.type}><option value="ALL">All</option><option value="STANDARD">Standard</option><option value="CUSTOM">Custom</option></select></label>
     </div><div className="rfl-history-control-actions"><button className="rfl-primary-button" type="submit">Apply filters</button><Link href="/manager/history">Clear filters</Link></div></form>

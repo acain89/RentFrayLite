@@ -21,7 +21,7 @@ async function configure(h,count,shared=false) {
   const response=await save({tiers:h.business.recurringPlans.map((plan,tier)=>({recurringPlanId:plan.id,charges:Array.from({length:count},(_,n)=>({id:null,clientKey:`new-${tier}-${n}`,sharedChargeGroupId:null,label:`Charge ${tier}/${n}`,amountCents:1,applyToAllTiers:shared}))}))});
   assert.equal(response.status,200,await response.clone().text());await refresh(h);return save;
 }
-for(const method of ['ACH','CARD']) for(const shared of [false,true]) test(`${method} PostgreSQL production save/pricing/start: ${shared?'two 250-charge shared tiers':'99-charge audit'}`,{skip:!postgres},async()=>{
+for(const method of ['ACH']) for(const shared of [false,true]) test(`${method} PostgreSQL production save/pricing/start: ${shared?'two 250-charge shared tiers':'99-charge audit'}`,{skip:!postgres},async()=>{
   const h=await harness(method,'postgres'); await configure(h,shared?250:99,shared);
   const expected=shared?500:99,checkout=await h.prepare();
   assert.equal(checkout.baseAmountCents,100000);assert.equal(checkout.subtotalCents,100000+expected);
@@ -64,7 +64,7 @@ async function assertReconciled(h,checkout,rows) {
   const fee=checkout.lineItems.find(item=>item.type==='PLATFORM_FEE'); assert.equal(params.line_items.filter(item=>item.price_data.product_data.name===fee.label).length,1);
   return {params,payment};
 }
-for(const backend of backends) for(const method of ['ACH','CARD']) {
+for(const backend of backends) for(const method of ['ACH']) {
   for(const count of [0,98,99,62500]) test(`${backend} ${method}: ${count} recurring rows preserve snapshots and fit transport`,async()=>{
     const h=await harness(method,backend);await populate(h,backend,count);const checkout=await h.prepare();
     const before=structuredClone(checkout.lineItems);const {params,payment}=await assertReconciled(h,checkout,count<=98?count+2:3);
@@ -110,7 +110,7 @@ for(const backend of backends) for(const method of ['ACH','CARD']) {
     assert.equal((await h.start(checkout)).status,200);assert.equal(h.calls.creates.length,1);assert.deepEqual(h.calls.creates[0].params,params);
     assert.deepEqual(await h.db.payment.findUnique({where:{id:payment.id}}),stored);assert.deepEqual(await h.db.checkoutSession.findUnique({where:{id:checkout.id}}),local);
     h.settle(a,intent);await h.webhook(a,intent); const paid=await h.db.payment.findUnique({where:{id:payment.id}});
-    assert.deepEqual(paid.lineItemsSnapshot,checkout.lineItems);assert.equal((await h.db.smsReceipt.findUnique({where:{paymentId:payment.id}})).status,'QUEUED');
+    assert.deepEqual(paid.lineItemsSnapshot,checkout.lineItems);assert.equal((await h.db.pushEvent.findMany({where:{paymentId:payment.id}})).length,1);
     if(backend==='postgres') {
       const result=await h.load('lib/paymentResult.ts').getPaymentResult(h.business.accountCode,a.session.id);assert.deepEqual(result.payment.lineItemsSnapshot,checkout.lineItems);
       const html=renderToStaticMarkup(await h.load('app/payment/success/page.tsx').default({searchParams:Promise.resolve({accountCode:h.business.accountCode,session_id:a.session.id})}));

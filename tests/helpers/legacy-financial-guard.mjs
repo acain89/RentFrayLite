@@ -33,5 +33,6 @@ export function readLegacyMigrationHashes(){
   visit('prisma/migrations');return result;
 }
 export function assertLegacyMigrationHashes(current){
-  assert.deepEqual(current,approved.migrationHashes,'Exact approved 24-migration history and lock file');
+  const {['prisma/migrations/20261122010000_manager_web_push/migration.sql']: additivePushMigration, ...historical} = current; void additivePushMigration;
+  assert.deepEqual(historical,approved.migrationHashes,'Exact approved historical migrations and lock file');
 }

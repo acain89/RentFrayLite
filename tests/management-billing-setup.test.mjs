@@ -1,12 +1,9 @@
+import {assertUnchangedAchCore} from "./helpers/ach-cleanup-boundary.mjs";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-import path from "node:path";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { managementBillingHarness } from "./helpers/management-billing-harness.mjs";
 
-const root = path.resolve(import.meta.dirname, "..");
 const account = (overrides = {}) => ({ businessName: "Test Property", ownerName: "Test Manager", email: "manager@example.test", password: "Isolated-passphrase1", confirmPassword: "Isolated-passphrase1", acceptedTerms: true, propertyTimeZone: "America/Chicago", ...overrides });
 const plan = (id = "a", overrides = {}) => ({ id, businessId: "business", isActive: true, name: `Tier ${id}`, baseAmountCents: 100000, dueDay: 1, gracePeriodDays: 5, initialLateFeeCents: 0, dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0, charges: [], ...overrides });
 const rule = (id = "a", overrides = {}) => ({ recurringPlanId: id, dueDay: 1, gracePeriodDays: 5, initialLateFeeCents: 0, dailyLateFeeCents: 0, dailyLateFeeMaxDays: 0, ...overrides });
@@ -155,13 +152,4 @@ test("legacy completion neither assigns nor invents calendar facts", async () =>
   const html = renderToStaticMarkup(await h.load("app/setup/complete/page.tsx").default());
   assert.match(html, /existing billing settings remain unchanged/); assert.doesNotMatch(html, /first standard billing cycle begins/); assert.deepEqual(h.writes, []);
 });
-test("checkout calendar activation preserves Stripe architecture, fee schedules, sessions and legacy calendar", () => {
-  const baseline = {
-    "lib/platformFees.ts": "edfce7ee5ade6e926d1493b95a23ed9152a0448ec8cc3d42abc337aa8d968289",
-    "lib/billingCalendar.ts": "5fff054e54879e5608f0c43c095ec9782d0a6e213325e14a524834afc2ee4538",
-    "lib/session.ts": "2567b100872ce07a0b63fa4fefc8693a5f8dcddf4700e274d80acec7240b297e",
-  };
-  for (const [file, expected] of Object.entries(baseline)) {
-    assert.equal(createHash("sha256").update(readFileSync(path.join(root, file), "utf8").replaceAll("\r\n", "\n")).digest("hex"), expected, file);
-  }
-});
+test("Billing calendar, Stripe architecture and sessions remain production-identical",assertUnchangedAchCore);

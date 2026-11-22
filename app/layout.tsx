@@ -23,6 +23,9 @@ export const metadata: Metadata = {
   description:
     "Standard rent and Custom Payments for rental properties.",
   applicationName: "RentFrayLite",
+  manifest: "/manifest.webmanifest",
+  icons: { apple: "/icons/rentfray-icon-192.png" },
+  appleWebApp: { capable: true, title: "RentFrayLite", statusBarStyle: "default" },
   robots: {
     index: true,
     follow: true,

@@ -98,7 +98,6 @@ function isPlatformFee(
 
 export default function ReviewPaymentClient({
   sourceType = "RECURRING_PLAN",
-  attemptReserved = false,
   checkoutSessionId,
   accountCode,
   unitNumber,
@@ -118,29 +117,15 @@ const [isSubmitting, setIsSubmitting] =
   useState(false);
 
 const [error, setError] = useState("");
-const [isChangingMethod, setIsChangingMethod] = useState(false);
-const [chosenMethod, setChosenMethod] = useState(paymentMethod);
-const isCustom = sourceType === "CUSTOM_PAYMENT";
 
-async function changeCustomMethod(method: "ACH" | "CARD") {
-  if (!isCustom || attemptReserved || isSubmitting || isChangingMethod || method === paymentMethod) return;
-  setChosenMethod(method); setIsChangingMethod(true); setError("");
-  try {
-    const amount = `${Math.trunc(subtotalCents / 100)}.${String(subtotalCents % 100).padStart(2, "0")}`;
-    const response = await fetch("/api/public/checkout/session", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sourceType: "CUSTOM_PAYMENT", accountCode, amount, firstName, lastName, unitNumber, phone, paymentMethod: method, previousCheckoutSessionId: checkoutSessionId }) });
-    const payload = await response.json();
-    if (!response.ok || typeof payload.reviewUrl !== "string") throw Error(payload.error ?? "Unable to update payment method.");
-    window.location.assign(payload.reviewUrl);
-  } catch (err) { setError(err instanceof Error ? err.message : "Unable to update payment method."); setChosenMethod(paymentMethod); setIsChangingMethod(false); }
-}
+const isCustom = sourceType === "CUSTOM_PAYMENT";
 
 const chargeLineItems = lineItems.filter(
   (item) => !isPlatformFee(item)
 );
 
 async function beginCheckout() {
-  if (isSubmitting || isChangingMethod) {
+  if (isSubmitting) {
     return;
   }
 
@@ -236,9 +221,7 @@ async function beginCheckout() {
             <div>
               <span>Payment Method</span>
               <strong>
-                {paymentMethod === "ACH"
-                  ? "Bank account"
-                  : "Credit or debit card"}
+                {paymentMethod === "ACH" ? "Bank account (ACH)" : "Historical card payment"}
               </strong>
             </div>
 
@@ -248,12 +231,6 @@ async function beginCheckout() {
             </div>
           </div>
 
-          {isCustom ? <fieldset className="rfl-checkout-payment-method" disabled={attemptReserved || isSubmitting || isChangingMethod}>
-            <legend>Payment method</legend>
-            <label><input type="radio" name="customPaymentMethod" checked={chosenMethod === "ACH"} onChange={() => changeCustomMethod("ACH")} />Bank account (ACH)</label>
-            <label><input type="radio" name="customPaymentMethod" checked={chosenMethod === "CARD"} onChange={() => changeCustomMethod("CARD")} />Credit or debit card</label>
-            {isChangingMethod ? <p>Updating payment summary…</p> : null}
-          </fieldset> : null}
 
           <div className="rfl-review-line-items">
             {chargeLineItems.map(
@@ -340,7 +317,7 @@ async function beginCheckout() {
           <div className="rfl-checkout-trust">
             <strong>Secure checkout powered by Stripe</strong>
             <span>
-              RentFrayLite does not store complete bank account or card
+              RentFrayLite does not store complete bank account or historic card
               numbers.
             </span>
           </div>
@@ -370,7 +347,7 @@ async function beginCheckout() {
             <button
   className="rfl-checkout-primary-button"
   type="button"
-  disabled={isSubmitting || isChangingMethod}
+  disabled={isSubmitting}
   onClick={beginCheckout}
 >
   {isSubmitting

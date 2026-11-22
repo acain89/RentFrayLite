@@ -20,7 +20,7 @@ async function singleAttempt(h, a) {
   assert.equal(state.payment.stripeCheckoutSessionId, a.session.id);
   assert.equal(state.checkout.stripeCheckoutSessionId, a.session.id); assert.equal(state.checkout.paymentId, a.payment.id);
 }
-for (const backend of backends) for (const method of ['ACH', 'CARD']) {
+for (const backend of backends) for (const method of ["ACH"]) {
   const label = `${backend} ${method} real failure/resume`;
   test(label + ': signed failure webhook reaches production review and resumes original immutable attempt', async () => {
     const h = await harness(method, backend), a = await fail(h), before = await stored(h, a);
@@ -70,7 +70,7 @@ for (const backend of backends) for (const method of ['ACH', 'CARD']) {
     const after = await stored(h, a);
     for (const field of ['subtotalCents', 'platformFeeCents', 'totalChargedCents', 'businessProceedsCents', 'billingCycle', 'sourceId', 'referenceLabel', 'lineItemsSnapshot']) assert.deepEqual(after.payment[field], financial.payment[field]);
     assert.equal(after.checkout.status, 'PAID'); assert.equal((await h.start(a.checkout)).status, 409);
-    assert.equal((await h.db.smsReceipt.findMany({ where: { paymentId: a.payment.id } })).length, 1); await singleAttempt(h, a);
+    assert.equal((await h.db.smsReceipt.findMany({ where: { paymentId: a.payment.id } })).length, 0); await singleAttempt(h, a);
   });
   for (const state of ['complete', 'expired', 'canceled', 'processing', 'succeeded', 'requires_capture']) test(label + ': refuses externally ' + state + ' without creating siblings', async () => {
     const h = await harness(method, backend), a = await fail(h);
@@ -129,7 +129,7 @@ for (const backend of backends) for (const method of ['ACH', 'CARD']) {
     if (attack === 'forged account code') changes.accountCode = 'ZZ-0000';
     if (Object.keys(changes).length) await h.db.checkoutSession.update({ where: { id: a.checkout.id }, data: changes });
     const before = await stored(h, a), response = await h.start(a.checkout);
-    assert.ok([409, 500].includes(response.status)); assert.deepEqual(await stored(h, a), before);
+    assert.ok((attack === "wrong method" ? [400] : [409, 500]).includes(response.status)); assert.deepEqual(await stored(h, a), before);
     assert.equal(h.calls.creates.length, 1); assert.equal(h.live.sessions.size, 1);
     if (attack.includes('binding')) await assert.rejects(() => review(h, a.checkout), /NOT_FOUND/);
   });
@@ -191,7 +191,7 @@ for (const backend of backends) for (const method of ['ACH', 'CARD']) {
   });
 }
 
-for (const backend of backends) for (const method of ['ACH', 'CARD']) test(`${backend} ${method} failed records cannot authorize forged IDs or another business`, async () => {
+for (const backend of backends) for (const method of ["ACH"]) test(`${backend} ${method} failed records cannot authorize forged IDs or another business`, async () => {
   const h = await harness(method, backend), a = await fail(h);
   assert.equal((await h.start({ id: 'forged-checkout' })).status, 404);
   await assert.rejects(() => h.load('app/[accountCode]/review/page.tsx').default({ params: Promise.resolve({ accountCode: 'ZZ-0000' }), searchParams: Promise.resolve({ session: a.checkout.id }) }), /NOT_FOUND/);

@@ -81,7 +81,7 @@ test("browser/current business changes cannot alter a captured resolved context"
 test("direct creation remains disabled and real checkout stays destination-scoped", async () => {
   assert.equal(policy.directPaymentCreationEnabled(), false);
   assert.equal(policy.selectedCheckoutChargeModel(), "LEGACY_DESTINATION");
-  const h = await harness("CARD", "isolated");
+  const h = await harness("ACH", "isolated");
   const checkout = await h.prepare();
   assert.equal((await h.start(checkout)).status, 200);
   const { params, options: requestOptions } = h.calls.creates[0];

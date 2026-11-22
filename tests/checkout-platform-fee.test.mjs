@@ -153,7 +153,6 @@ async function startCheckout(checkout, business, existingPayment = null) {
 
 const methods = [
   { paymentMethod: enums.PaymentMethod.ACH, fee: 995, total: 100995, stripeMethod: "us_bank_account" },
-  { paymentMethod: enums.PaymentMethod.CARD, fee: 4900, total: 104900, stripeMethod: "card" },
 ];
 
 for (const { paymentMethod, fee, total, stripeMethod } of methods) {

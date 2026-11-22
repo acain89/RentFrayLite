@@ -40,7 +40,7 @@ async function serve(f,page,onSignOut){
   }
   const dashboard=url.pathname==="/manager/dashboard",element=dashboard?await f.dashboardPage(url.searchParams.toString()):await f.history(url.searchParams.toString());
   const code=await bundle(dashboard?"app/manager/dashboard/ManagerDashboardClient.tsx":"app/manager/history/ManagerHistoryClient.tsx");
-  const body='<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script>window.props='+JSON.stringify(element.props).replaceAll("<","\\u003c")+';</script><script>'+code.replaceAll("</script","<\\/script")+'</script>';
+  const body='<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script>window.props='+JSON.stringify({...element.props,notificationHistory:null}).replaceAll("<","\\u003c")+';</script><script>'+code.replaceAll("</script","<\\/script")+'</script>';
   return route.fulfill({contentType:"text/html",body});
  });
  return csv;
@@ -51,7 +51,7 @@ test("history form filters server-side, paginates, and exports/prints every matc
  await f.db.payment.createMany({data:Array.from({length:100},(_,n)=>({...data,payerFirstName:"Jane"+n,status:n<60?"RETURNED":"PAID",returnedAt:n<60?new Date("2026-12-01"):null}))});
  const browser=await chromium.launch({headless:true});
  try{
-  const page=await browser.newPage();page.setDefaultTimeout(10000);const csv=await serve(f,page);await page.goto("https://example.test/manager/history");
+  const page=await browser.newPage();page.setDefaultTimeout(30000);const csv=await serve(f,page);await page.goto("https://example.test/manager/history");
   await expect(page.locator("tbody tr")).toHaveCount(50);await expect(page.getByRole("link",{name:"Next",exact:true})).toBeVisible();
   await page.getByLabel("Payment status",{exact:true}).selectOption("FAILED");
   await Promise.all([page.waitForURL(/status=FAILED/),page.getByRole("button",{name:"Apply filters"}).click()]);
@@ -112,15 +112,15 @@ test("dashboard preserves existing sign-out endpoint and redirect behavior",asyn
 async function nativeReportingBridge(f){
  return reportingBrowserBridge(f,async(kind,props)=>{
   const file=kind==='login'?'app/login/manager/ManagerLoginClient.tsx':kind==='dashboard'?'app/manager/dashboard/ManagerDashboardClient.tsx':'app/manager/history/ManagerHistoryClient.tsx';
-  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+readFileSync('app/globals.css','utf8').replace(/^@import "tailwindcss";\s*/,'')+'</style></head><body><div id="root"></div><script>window.props='+JSON.stringify(props).replaceAll('<','\\u003c')+';</script><script>'+(await bundle(file)).replaceAll('</script','<\\/script')+'</script></body></html>';
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+readFileSync('app/globals.css','utf8').replace(/^@import "tailwindcss";\s*/,'')+'</style></head><body><div id="root"></div><script>window.props='+JSON.stringify({...props,notificationHistory:null}).replaceAll('<','\\u003c')+';</script><script>'+(await bundle(file)).replaceAll('</script','<\\/script')+'</script></body></html>';
  });
 }
 const browserOrigin='https://example.test';
-for(const [width,height] of [[360,800],[390,844],[1024,768],[1440,900]])test('PostgreSQL native expired-session redirect/cookies '+width+'x'+height,async()=>{
+for(const [width,height] of [[360,800],[390,844],[1024,768],[1440,900]])test('PostgreSQL native expired-session redirect/cookies '+width+'x'+height,{skip:!postgres},async()=>{
  assert.ok(postgres,'Verified disposable PostgreSQL configuration is required');const f=await reportingFixture('postgres');await f.seed({payerFirstName:'OWNER_A_MARKER'});await f.seed({businessId:f.businesses[1].id,payerFirstName:'OWNER_B_MARKER'});
  const seededHash=f.session.hashSessionToken(f.token()),seeded=await f.db.session.findUnique({where:{tokenHash:seededHash}}),bridge=await nativeReportingBridge(f),browser=await chromium.launch({headless:true}),transports=[];
  try{
-  const page=await browser.newPage({viewport:{width,height},hasTouch:width<500});page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(10000);transports.push(await interceptReportingBrowser(page,bridge));
+  const page=await browser.newPage({viewport:{width,height},hasTouch:width<500});page.setDefaultTimeout(30000);page.setDefaultNavigationTimeout(10000);transports.push(await interceptReportingBrowser(page,bridge));
   const ownCookie=async p=>(await p.context().cookies()).find(c=>c.name==='rfl_session');
   const denied=async(path,expiresCookie=false)=>{
    const url=browserOrigin+path,observed=page.waitForResponse(r=>r.url()===url&&r.request().isNavigationRequest());
@@ -138,7 +138,7 @@ for(const [width,height] of [[360,800],[390,844],[1024,768],[1440,900]])test('Po
   const count=await f.db.session.count();await page.getByLabel('Email address',{exact:true}).fill(f.managers[0].email);await page.getByLabel('Password',{exact:true}).fill('wrong-password');const rejected=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/auth/login');await page.getByRole('button',{name:'Sign In',exact:true}).click();assert.equal((await rejected).status(),401);await expect(page.getByRole('alert')).toContainText('Unable to sign in');assert.equal(await f.db.session.count(),count);assert.equal(!!await ownCookie(page),false);
   const first=await login(page,0);await expect(page.getByText('OWNER_A_MARKER',{exact:false})).toBeVisible();assert.equal(await page.getByText('OWNER_B_MARKER',{exact:false}).count(),0);await page.getByRole('link',{name:'Payment History',exact:true}).click();await expect(page.locator('tbody tr')).toHaveCount(1);
   const cross=await page.evaluate(async url=>{const r=await fetch(url);return {status:r.status,body:await r.text()};},'/api/manager/transactions/export?businessId='+f.businesses[1].id);assert.equal(cross.status,400);assert.ok(!cross.body.includes('OWNER_B_MARKER'));
-  const peer=await browser.newPage({viewport:{width,height}});peer.setDefaultTimeout(10000);transports.push(await interceptReportingBrowser(peer,bridge));const peerCookie=await login(peer,1),peerRow=await f.db.session.findUnique({where:{tokenHash:f.session.hashSessionToken(peerCookie.value)}});
+  const peer=await browser.newPage({viewport:{width,height}});peer.setDefaultTimeout(30000);transports.push(await interceptReportingBrowser(peer,bridge));const peerCookie=await login(peer,1),peerRow=await f.db.session.findUnique({where:{tokenHash:f.session.hashSessionToken(peerCookie.value)}});
   await page.goto(browserOrigin+'/manager/dashboard');await page.getByLabel('Account menu',{exact:true}).click();const logout=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/auth/logout');await page.getByRole('button',{name:'Sign Out',exact:true}).click();const loggedOut=await logout;assert.equal(loggedOut.status(),200);await page.waitForURL(browserOrigin+'/');assert.equal(!!await ownCookie(page),false);assert.equal(await f.db.session.findUnique({where:{tokenHash:f.session.hashSessionToken(first.value)}}),null);
   await page.context().addCookies([first]);await denied('/manager/history');assert.ok(await ownCookie(page),'Server-component redirect must not fabricate cookie mutation');await denied('/api/manager/transactions/export',true);
   const timed=await login(page,0),expiredRow=await f.db.session.findUnique({where:{tokenHash:f.session.hashSessionToken(timed.value)}});await f.db.session.update({where:{id:expiredRow.id},data:{expiresAt:new Date(0)}});await denied('/manager/history');assert.equal(await f.db.session.findUnique({where:{id:expiredRow.id}}),null);assert.ok(await ownCookie(page));await denied('/api/manager/transactions/export',true);

@@ -61,7 +61,7 @@ test("banking revalidates a stale manager snapshot inside the existing mutation 
 test("welcome walkthrough is public, labels fictional examples and explains processing fees and secure banking",async()=>{
  const h=await fixture();h.mocks["next/link"]={__esModule:true,default:p=>React.createElement("a",p)};
  const Page=h.load("app/new-here/page.tsx").default,html=renderToStaticMarkup(React.createElement(Page));
- for(const text of ["Welcome to","Demo \u00b7 fictional data","Payment tiers","Manager dashboard","Customer view","Customers pay a processing fee","Stripe collects","Consent is optional","does not enroll anyone in autopay"]) assert.ok(html.includes(text),text);
+ for(const text of ["Welcome to","Demo \u00b7 fictional data","Payment tiers","Manager dashboard","Customer view","Customers pay a processing fee","Stripe collects","optional browser","does not enroll anyone in autopay"]) assert.ok(html.includes(text),text);
  assert.doesNotMatch(html,/AC-1989|ANDREW|936|<input|<button/);assert.equal(h.calls.length,0);
 });
 

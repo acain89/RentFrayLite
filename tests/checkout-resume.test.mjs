@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { harness, postgres } from './helpers/checkout-harness.mjs';
-for (const backend of [...(postgres ? ['postgres'] : []), 'isolated']) for (const method of ['ACH','CARD']) {
+for (const backend of [...(postgres ? ['postgres'] : []), 'isolated']) for (const method of ['ACH']) {
  const label=`${backend} ${method} B3`;
  const getCheckout=(h,a)=>h.db.checkoutSession.findUnique({where:{id:a.checkout.id}});
  test(`${label}: cancel URL returns to production review and resumes identical immutable attempt`,async()=>{
@@ -56,7 +56,7 @@ for (const backend of [...(postgres ? ['postgres'] : []), 'isolated']) for (cons
   if(mutate==='readiness loss'){h.stripe.accounts.retrieve=async()=>{throw Error('Not ready');};}
   if(Object.keys(data).length)await h.db.checkoutSession.update({where:{id:a.checkout.id},data});
   const before=await h.db.payment.findUnique({where:{id:a.payment.id}});const checkout=await getCheckout(h,a);
-  const response=await h.start(a.checkout);assert.ok([409,500].includes(response.status));assert.equal(h.calls.creates.length,1);assert.equal(h.live.sessions.size,1);
+  const response=await h.start(a.checkout);assert.ok((mutate === "wrong method" ? [400] : [409,500]).includes(response.status));assert.equal(h.calls.creates.length,1);assert.equal(h.live.sessions.size,1);
   assert.deepEqual(await h.db.payment.findUnique({where:{id:a.payment.id}}),before);assert.deepEqual(await getCheckout(h,a),checkout);
  });
  for (const status of ['processing','succeeded','requires_capture']) test(`${label}: open Checkout cannot resume ${status} intent`,async()=>{

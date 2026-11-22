@@ -20,7 +20,7 @@ export function accountProvisioningParameters(profile: Profile, input: { busines
   // selects this profile; no existing connected account is updated or replaced.
   return { ...common, default_currency: "usd", controller: { fees: { payer: "account" }, losses: { payments: "stripe" },
     requirement_collection: "stripe", stripe_dashboard: { type: "full" } },
-    capabilities: { card_payments: { requested: true }, us_bank_account_ach_payments: { requested: true } } };
+    capabilities: { us_bank_account_ach_payments: { requested: true } } };
 }
 
 async function readIdentity(stripe: Stripe, expected?: StripePaymentIdentity): Promise<StripePaymentIdentity> {

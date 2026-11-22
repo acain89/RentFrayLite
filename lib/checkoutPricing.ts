@@ -8,7 +8,6 @@ import {
 } from "@/lib/financialState";
 import {
   getAchPlatformFeeCents,
-  getCardPlatformFeeCents,
 } from "@/lib/platformFees";
 
 /*
@@ -69,9 +68,8 @@ export function getPlatformFeeCents(
   paymentMethod: PaymentMethod,
   subtotalCents: number
 ): number {
-  return paymentMethod === "ACH"
-    ? getAchPlatformFeeCents(subtotalCents)
-    : getCardPlatformFeeCents(subtotalCents);
+  if (paymentMethod !== "ACH") throw new RangeError("Only ACH payments are accepted.");
+  return getAchPlatformFeeCents(subtotalCents);
 }
 
 /**
@@ -117,9 +115,7 @@ export function calculateCheckoutPricing({
     {
       type: "PLATFORM_FEE",
       label:
-        paymentMethod === "ACH"
-          ? "Platform service fee — bank account"
-          : "Platform service fee — card",
+        "Platform service fee — bank account",
       amountCents: platformFeeCents,
     },
   ];

@@ -19,7 +19,7 @@ export function parseCustomPaymentAmount(value: unknown): number {
 
 export function quoteCustomPayment(amountCents: number, paymentMethod: PaymentMethod, chargeModel: "LEGACY_DESTINATION" | "DIRECT" = "LEGACY_DESTINATION") {
   if (!Number.isSafeInteger(amountCents) || amountCents < 100 || amountCents > MAX_PAYMENT_AMOUNT_CENTS ||
-      (paymentMethod !== "ACH" && paymentMethod !== "CARD")) throw new RangeError("Invalid Custom Payment.");
+      paymentMethod !== "ACH") throw new RangeError("Invalid Custom Payment.");
   if (chargeModel !== "LEGACY_DESTINATION" && chargeModel !== "DIRECT") throw Error("Unsupported quote architecture.");
   const platformFeeCents = chargeModel === "DIRECT"
     ? priceRflDirectV1({ managementOwedCents: amountCents, paymentMethod }).tenantProcessingFeeCents
@@ -29,7 +29,7 @@ export function quoteCustomPayment(amountCents: number, paymentMethod: PaymentMe
     subtotalCents: amountCents, platformFeeCents, totalCents: amountCents + platformFeeCents,
     lineItems: [
       { type: "CUSTOM_PAYMENT", label: "Custom Payment", amountCents },
-      { type: "PLATFORM_FEE", label: chargeModel === "DIRECT" ? (paymentMethod === "ACH" ? "ACH processing fee" : "Card processing fee") : paymentMethod === "ACH" ? "Platform service fee — bank account" : "Platform service fee — card", amountCents: platformFeeCents },
+      { type: "PLATFORM_FEE", label: chargeModel === "DIRECT" ? "ACH processing fee" : "Platform service fee — bank account", amountCents: platformFeeCents },
     ],
   };
 }

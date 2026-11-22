@@ -5,11 +5,11 @@ const operations = new Set([
   "checkout_create_failed", "checkout_persistence_failed", "checkout_recovery_failed", "checkout_url_missing",
   "stripe_signature_failed", "stripe_processing_failed", "stripe_connect_failed",
   "stripe_refresh_failed", "stripe_sync_failed", "setup_failed", "database_failed", "checkout_review_failed", "payment_result_failed",
-  "sms_worker_failed", "sms_status_callback_failed", "sms_inbound_callback_failed",
+  "push_worker_failed",
 ]);
 const classifications = new Set([
   "ACCOUNT_MODE_MISMATCH", "UNSUPPORTED_FINANCIAL_EVENT", "UNKNOWN_PAYMENT_OWNERSHIP",
-  "CHECKOUT_OWNERSHIP_NOT_PERSISTED", "RETRYABLE_STATE_CHANGED", "SMS_OUTBOX_PERSISTENCE_FAILED",
+  "CHECKOUT_OWNERSHIP_NOT_PERSISTED", "RETRYABLE_STATE_CHANGED",
 ]);
 const stripeTypes = new Set(["StripeAPIError", "StripeConnectionError", "StripeAuthenticationError",
   "StripeInvalidRequestError", "StripeRateLimitError", "StripeCardError", "StripePermissionError", "StripeSignatureVerificationError"]);
@@ -30,8 +30,6 @@ export function operationalDiagnostic(operation: string, error?: unknown, refere
       else if (e.constructor?.name === "OwnershipMismatch") category = "OWNERSHIP_MISMATCH";
       else if (typeof e.type === "string" && stripeTypes.has(e.type)) category = e.type;
       else if (typeof e.code === "string" && databaseCodes.has(e.code)) category = `PRISMA_${e.code}`;
-      else if (e.code === 21610) category = "TWILIO_OPTED_OUT";
-      else if (e.code === 20429) category = "TWILIO_RATE_LIMITED";
       else if (e.code === "ETIMEDOUT") category = "NETWORK_TIMEOUT";
       else if (e.code === "ECONNRESET") category = "NETWORK_UNCONFIRMED";
     }

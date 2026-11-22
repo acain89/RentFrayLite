@@ -15,7 +15,7 @@ async function fixture(method = "ACH", now = "2026-10-01T05:00:00Z", overrides =
   return { ...h, clock, create, review };
 }
 
-for (const method of ["ACH", "CARD"]) {
+for (const method of ["ACH"]) {
   test(`${method}: creation before first local midnight is blocked with availability date`, async () => {
     const h = await fixture(method, "2026-10-01T04:59:59.999Z"); const response = await h.create({ now: "2099-01-01", dueDay: 1, billingCycle: "2026-10" });
     assert.equal(response.status, 409); const body = await response.json(); assert.equal(body.code, "BEFORE_FIRST_CYCLE"); assert.match(body.error, /October 1, 2026.*America\/Chicago/);
@@ -140,7 +140,7 @@ for (const iso of ["2026-11-01T06:59:59.999Z", "2026-11-01T07:00:00Z", "2026-11-
 }
 
 test("daily fees can be enabled independently of the initial fee", async () => {
-  const h = await fixture("CARD", "2026-10-05T05:00:00Z"); h.business.recurringPlans[0].initialLateFeeCents = 0;
+  const h = await fixture("ACH", "2026-10-05T05:00:00Z"); h.business.recurringPlans[0].initialLateFeeCents = 0;
   const checkout = await h.prepare(); assert.equal(checkout.initialLateFeeCents, 0); assert.equal(checkout.dailyLateFeesCents, 100);
   assert.equal((await h.start(checkout)).status, 200);
 });

@@ -6,7 +6,6 @@ import {
 import { prisma } from "@/lib/prisma";
 import { REPORT_SELECT, serializeReportPayment, type HistoryPayment } from "@/lib/transactionReporting";
 import { loadReportingDisputeOutcomes } from "@/lib/paymentReportingOutcome";
-import { loadSmsDeliveryMetrics, type SmsDeliveryMetric } from "@/lib/smsDeliveryReporting";
 
 export type PeriodMetric = {
   count: number;
@@ -32,12 +31,6 @@ export type AdminDashboardData = {
     allTime: PeriodMetric;
   };
   issues: {
-    smsDelivery: { today: SmsDeliveryMetric; month: SmsDeliveryMetric; allTime: SmsDeliveryMetric };
-    smsFailed: {
-      today: number;
-      month: number;
-      allTime: number;
-    };
     achReturns: {
       today: PeriodMetric;
       month: PeriodMetric;
@@ -93,7 +86,7 @@ function emptyPeriods() { return { today: emptyMetric(), month: emptyMetric(), a
 export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   const now = new Date(), today = startOfUtcDay(now), month = startOfUtcMonth(now);
   // One read snapshot covers business count, payment/refund/journal pages and
-  // existing SMS metrics. Never mix independent financial-period scans.
+  // financial metrics. Never mix independent financial-period scans.
   return prisma.$transaction(async tx => {
     const connectedBusinesses = await tx.business.count({ where: {
       setupCompletedAt: { not: null }, isActive: true,
@@ -122,10 +115,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
       if (rows.length < 500) break;
       cursor = rows[rows.length - 1].id;
     }
-    const smsDelivery = await loadSmsDeliveryMetrics(tx, today, month);
     return { connectedBusinesses, payments, issues: {
-      smsDelivery, smsFailed: { today: smsDelivery.today.total.FAILED,
-        month: smsDelivery.month.total.FAILED, allTime: smsDelivery.allTime.total.FAILED },
       achReturns, chargebacks,
     } };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, maxWait: 10000, timeout: 60000 });

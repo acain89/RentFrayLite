@@ -15,7 +15,6 @@ import {
 
 import {
   getAchPlatformFeeCents,
-  getCardPlatformFeeCents,
 } from "../lib/platformFees";
 
 function assertEqual<T>(
@@ -271,11 +270,6 @@ function testFeeAuthorities(): void {
     "ACH $500 fee"
   );
 
-  assertEqual(
-    getCardPlatformFeeCents(50_000),
-    2_300,
-    "Card $500 fee"
-  );
 }
 
 function main(): void {

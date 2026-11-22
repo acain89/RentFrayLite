@@ -16,7 +16,7 @@ async function fixture(change) {
   return { ...f, h, business, architecture, run: (planId, sourceType) => service.getModelAwareBusinessPaymentReadiness(business, architecture, planId, sourceType) };
 }
 
-for (const method of ["CARD", "ACH"]) test(`eligible direct account supports ${method} with fresh scoped evidence`, async () => {
+for (const method of ["ACH"]) test(`eligible direct account supports ${method} with fresh scoped evidence`, async () => {
   const f = await fixture();
   const result = await f.run();
   assert.equal(result.ready, true); assert.equal(result.configurationReady, true);
@@ -39,10 +39,8 @@ const denied = [
   ["payouts disabled", f => { f.state.account.payouts_enabled = false; }],
   ["incomplete onboarding", f => { f.state.account.details_submitted = false; }],
   ["requirements outstanding", f => { f.state.account.requirements.currently_due = ["synthetic_requirement"]; }],
-  ["card inactive", f => { f.state.account.capabilities.card_payments = "inactive"; }],
   ["ACH pending", f => { f.state.account.capabilities.us_bank_account_ach_payments = "pending"; }],
-  ["missing capability", f => { delete f.state.account.capabilities.card_payments; }],
-  ["card unavailable", f => { f.state.configurations.data[0].card.available = false; }],
+  ["missing capability", f => { delete f.state.account.capabilities.us_bank_account_ach_payments; }],
   ["ACH disabled", f => { f.state.configurations.data[0].us_bank_account.display_preference.value = "off"; }],
   ["configuration disabled", f => { f.state.configurations.data[0].active = false; }],
   ["test mode in production", f => { f.architecture.production = true; }],
@@ -106,9 +104,9 @@ test("client architecture fields do not switch public quote or payment routing",
 
 test("each readiness call refreshes provider evidence instead of trusting earlier eligibility", async () => {
   const f = await fixture(); assert.equal((await f.run()).ready, true);
-  f.state.account.capabilities.card_payments = "inactive";
+  f.state.account.capabilities.us_bank_account_ach_payments = "inactive";
   assert.equal((await f.run()).ready, false);
-  f.state.account.capabilities.card_payments = "active"; f.state.fail = "connectedBalance";
+  f.state.account.capabilities.us_bank_account_ach_payments = "active"; f.state.fail = "connectedBalance";
   assert.equal((await f.run()).ready, false);
 });
 

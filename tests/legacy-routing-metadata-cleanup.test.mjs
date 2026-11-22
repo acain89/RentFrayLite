@@ -1,16 +1,15 @@
+import {existsSync} from "node:fs";
+import {assertUnchangedAchCore,assertAdditivePushSchema} from "./helpers/ach-cleanup-boundary.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { authHarness, postgres } from './helpers/auth-harness.mjs';
 import { managementBillingHarness } from './helpers/management-billing-harness.mjs';
 import { SetupStep } from '@prisma/client';
-import { assertLegacyFinancialSource, readLegacyMigrationHashes, assertLegacyMigrationHashes } from './helpers/legacy-financial-guard.mjs';
 
-const baseline='223b6f853bf94475f30ca76a73ab85404307fd7c';
 const pure=managementBillingHarness();
 pure.mocks['@prisma/client']={...pure.mocks['@prisma/client'],SetupStep};
 const progress=pure.load('lib/setupProgress.ts');
@@ -85,24 +84,13 @@ test('small-property tiers render the intended middle dot without changing amoun
   const html=renderToStaticMarkup(React.createElement(Client,{initialTiers:[{id:'tier',name:'Rent',amount:'1000.00'}],highestReachedStep:2}));
   assert.ok(html.includes('Recurring setup · Step 1 of 4'));assert.doesNotMatch(html,/[\u00c2\u00c3\ufffd]/);assert.ok(html.includes('1000.00'));
 });
-test('encoding edits change exactly the two corrupted code-point sequences',()=>{
-  for(const [file,oldText,newText]of [['components/SiteFooter.tsx','\u00c2\u00a9','\u00a9'],['app/setup/recurring/tiers/RecurringTiersClient.tsx','\u00c2\u00b7','\u00b7']]){
-    const old=execFileSync('git',['show',baseline+':'+file],{encoding:'utf8',windowsHide:true});
-    assert.equal(readFileSync(file,'utf8').replaceAll('\r\n','\n'),old.replaceAll('\r\n','\n').replaceAll(oldText,newText));
-  }
+test("ACH cleanup preservation: assertUnchangedAchCore (encoding edits change exactly the two )",assertUnchangedAchCore);
+test("ACH cleanup preservation: assertAdditivePushSchema (schema defaults, verification persiste)",assertAdditivePushSchema);
+test('clean production release excludes legacy SQLite and APK artifacts',()=>{
+  const files=['prisma/dev.db','public/app-release-signed.apk'];
+  for(const file of files)assert.equal(existsSync(file),false,file);
 });
-test('schema defaults, verification persistence, authentication and financial/security implementations are unchanged',()=>{
-  for(const file of ['prisma/schema.prisma','lib/auth.ts','lib/session.ts','lib/sessionAuthority.ts','lib/passwordRecovery.ts','lib/smsConsent.ts','lib/smsDelivery.ts','lib/smsNotifications.ts','lib/platformFees.ts','lib/rflDirectPricing.ts','lib/checkoutRetry.ts','lib/checkoutLifecycle.ts','lib/checkoutPricing.ts','lib/stripe.ts','lib/stripePaymentWebhook.ts','app/api/setup/route.ts','app/api/public/checkout/session/route.ts','app/api/public/checkout/start/route.ts']){
-    assertLegacyFinancialSource(file,readFileSync(file,'utf8'),execFileSync('git',['show',baseline+':'+file],{encoding:'utf8',windowsHide:true}));
-  }
-  assertLegacyMigrationHashes(readLegacyMigrationHashes());
-});
-test('tracked historical SQLite and APK artifacts retain their original bytes',()=>{
-  for(const file of ['prisma/dev.db','public/app-release-signed.apk']){
-    const original=execFileSync('git',['show',baseline+':'+file],{maxBuffer:5_000_000,windowsHide:true});
-    assert.equal(createHash('sha256').update(readFileSync(file)).digest('hex'),createHash('sha256').update(original).digest('hex'),file);
-  }
-});
+
 const configPath=process.argv.find(arg=>arg.startsWith('--rfl-test-db-config='))?.slice('--rfl-test-db-config='.length);
 if(configPath)test('disposable verification preserves every excluded artifact and both tracked historical artifacts',()=>{
   const config=JSON.parse(readFileSync(configPath,'utf8'));assert.equal(config.isolationVerified,true);

@@ -1,13 +1,14 @@
 "use client";
 import Link from "next/link";
+import ManagerPushControls from "@/components/ManagerPushControls";
 import LogoutButton from "@/components/LogoutButton";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardPayment } from "@/lib/dashboard";
 import type { PaymentReadiness } from "@/lib/paymentReadiness";
 import { REPORT_STATE_HELP, REPORT_PAGE_SIZE, reportSearchParams, type ReportFilters } from "@/lib/transactionReportView";
 import { reportingTimestampFormatter } from "@/lib/reportingCalendar";
-type Props = {readiness:PaymentReadiness;businessName:string;accountCode:string;managerName:string;billingCycleLabel:string;
+type Props = {notificationHistory?:ReactNode;readiness:PaymentReadiness;businessName:string;accountCode:string;managerName:string;billingCycleLabel:string;
   summary:{paid:number;pending:number;issues:number};billingCycle:string;currentCycle:string;
   payments:DashboardPayment[];total:number;filters:ReportFilters;timeZone:string;legacyTimeZone:boolean;nextCycleAt:string};
 export default function ManagerDashboardClient(p:Props) {
@@ -55,6 +56,8 @@ export default function ManagerDashboardClient(p:Props) {
       {p.accountCode && p.accountCode !== "-" && <Link className="rfl-qr-dashboard-link" prefetch={false} href="/manager/payment-qr">Print Payment QR Code</Link>}
       </div>
     </header>
+    <ManagerPushControls />
+    {p.notificationHistory}
     <aside className={"rfl-home-readiness"+(p.readiness.ready?" is-ready":"")} aria-label="Payment readiness" role="status">
       <span aria-hidden="true">{p.readiness.ready?"\u25cf":"!"}</span> <strong>{p.readiness.title}</strong>
       {p.readiness.reasons.map(r=><p key={r.code}><Link href={r.route}>{r.message}</Link></p>)}

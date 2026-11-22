@@ -1,4 +1,4 @@
-import { normalizeRegistrationPhone, REGISTRATION_PHONE_INVALID, REGISTRATION_SMS_PHONE_REQUIRED } from "@/lib/registrationPhone";
+import { normalizeRegistrationPhone, REGISTRATION_PHONE_INVALID } from "@/lib/registrationPhone";
 import { isNewManagementPassword, isManagementLoginPassword, MANAGEMENT_PASSWORD_REQUIREMENT } from "@/lib/managementCredential";
 import { z } from "zod";
 import { isAdminCredential } from "@/lib/adminCredential";
@@ -34,7 +34,6 @@ const registrationEmailSchema = z.string().trim().email("Enter a valid email add
 
 export const setupAccountSchema = z
   .object({
-    smsConsent: z.boolean().optional().default(false),
     propertyTimeZone: z.string()
       .refine(isSupportedPropertyTimeZone, "Choose a supported U.S. property timezone.")
       .transform(validatePropertyTimeZone),
@@ -75,10 +74,7 @@ export const setupAccountSchema = z
     .every(address => address === undefined || address === (data.email ?? data.managerEmail)), {
     message: "Use the same email address for business contact and manager login.", path: ["email"],
   })
-  .refine(data => !data.smsConsent || !!normalizeRegistrationPhone(data.contactPhone), {
-    message: REGISTRATION_SMS_PHONE_REQUIRED, path: ["contactPhone"],
-  })
-  .refine(data => !data.contactPhone || data.smsConsent || !!normalizeRegistrationPhone(data.contactPhone), {
+  .refine(data => !data.contactPhone || !!normalizeRegistrationPhone(data.contactPhone), {
     message: REGISTRATION_PHONE_INVALID, path: ["contactPhone"],
   })
   .refine((data) => data.password === data.confirmPassword, {

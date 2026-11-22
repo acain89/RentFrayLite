@@ -1,3 +1,4 @@
+import {historicalCardFoundation} from "./historical-card-fixture.mjs";
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
@@ -10,14 +11,14 @@ export async function webhookFixture(backend='isolated',model='DIRECT',method='A
  let checkout,payment,session;
  if(model==='DIRECT'){
   const f=directStripeFixture();f.input.connectedAccountId=h.business.stripeConnection.stripeAccountId;f.state.account.id=f.input.connectedAccountId;
-  const report=await h.load('lib/stripeDirectReadiness.ts').readDirectChargeReadiness(f.stripe,f.input),foundation=h.load('lib/directPaymentFoundation.ts');
+  const report=await h.load('lib/stripeDirectReadiness.ts').readDirectChargeReadiness(f.stripe,f.input),foundation=method==='CARD'?historicalCardFoundation(h):h.load('lib/directPaymentFoundation.ts');
   const plan={...h.business.recurringPlans[0],businessId:h.business.id};const q=foundation.prepareDirectCheckoutQuote(report,{property:{...h.business,createdAt:h.business.createdAt??new Date()},source:sourceType==='CUSTOM_PAYMENT'?{sourceType,amount:'123.45'}:{sourceType,plan},paymentMethod:method,now:new Date(),identity:f.input.identity,connectedAccountId:f.input.connectedAccountId,checkoutAttemptId:'direct-'+randomUUID()});
   checkout=await db.checkoutSession.create({data:{...q,lineItems:[...q.lineItems],firstName:'Synthetic',lastName:'Payer',unitNumber:'101',phone:'5555551234',status:'REVIEWED',expiresAt:new Date(Date.now()+3600000)}});
   payment=await db.payment.create({data:foundation.prepareDirectPaymentRecord(checkout,report,f.input.identity)});checkout=await db.checkoutSession.update({where:{id:checkout.id},data:{paymentId:payment.id}});
   const request=foundation.prepareDirectCheckoutRequest(checkout,payment,report,f.input.identity,'https://example.test',new Date(Math.max(Date.now(),payment.createdAt.getTime()))),id='cs_direct_'+randomUUID().replaceAll('-','');
   session={id,object:'checkout.session',mode:'payment',livemode:false,status:'complete',payment_status:'unpaid',currency:'usd',amount_total:payment.totalChargedCents,client_reference_id:payment.id,metadata:request.params.metadata,payment_method_types:request.params.payment_method_types,payment_intent:null};h.live.sessions.set(id,session);
   payment=await db.payment.update({where:{id:payment.id},data:{status:'CHECKOUT_STARTED',stripeCheckoutSessionId:id}});checkout=await db.checkoutSession.update({where:{id:checkout.id},data:{status:'CHECKOUT_STARTED',stripeCheckoutSessionId:id}});
- }else{checkout=await h.prepare();assert.equal((await h.start(checkout)).status,200);[payment]=await h.payments();session=h.live.sessions.get(payment.stripeCheckoutSessionId);}
+ }else{const old=await h.original("CHECKOUT_STARTED");checkout=old.checkout;payment=old.payment;session=old.session;}
  const attempt={payment,checkout,session},intent=h.intentFor(attempt,'processing');intent.last_payment_error=null;intent.payment_method_types=[method==='ACH'?'us_bank_account':'card'];if(model==='DIRECT'){intent.application_fee_amount=payment.rflApplicationFeeCents;delete intent.transfer_data;}
  const read=async(kind,options,fn)=>{assert.notEqual(als.getStore(),true,'No Stripe reads under database write locks');state.reads.push({kind,options});if(state.fault===kind)throw Error('Mock provider unavailable');if(kind==='intent')await state.hook?.();return structuredClone(fn());};
  h.stripe.accounts.retrieve=async options=>read('platform',options,()=>({id:state.platformId}));h.stripe.balance.retrieve=async(_params,options)=>read('balance',options,()=>({livemode:state.mode}));

@@ -97,7 +97,7 @@ test("identity/mode reported before first account creation", async () => {
   const h = fake(), create = h.stripe.accounts.create;
   h.stripe.accounts.create = async (...args) => { assert.ok(h.logs.some(log => log.label === "PASS_IDENTITY_AND_NON_LIVE")); return create(...args); };
   assert.equal(await tool.runSandboxVerification(h.stripe, key, options, h.log), true);
-  assert.equal(h.writes.filter(row => row[0] === "intent").length, 2);
+  assert.equal(h.writes.filter(row => row[0] === "intent").length, 1);
   assert.ok(!JSON.stringify(h.logs).includes(key));
 });
 for (const field of ["charges_enabled", "payouts_enabled", "details_submitted"]) test(`${field} disabled blocks test charges`, async () => {
@@ -107,7 +107,7 @@ for (const field of ["charges_enabled", "payouts_enabled", "details_submitted"])
 });
 for (const mutation of [a => a.controller.fees.payer = "application_express", a => a.controller.losses.payments = "application",
   a => a.controller.requirement_collection = "application", a => a.controller.stripe_dashboard.type = "express",
-  a => a.capabilities.card_payments = "pending", a => a.capabilities.us_bank_account_ach_payments = "inactive",
+  a => a.capabilities.us_bank_account_ach_payments = "inactive",
   a => a.requirements.currently_due = ["tos_acceptance.date"], a => a.requirements.pending_verification = ["individual.verification"],
   a => a.requirements = null, a => a.metadata.runId = "other"]) test(`incomplete/incompatible account case ${String(mutation)} blocks charges`, async () => {
   const connected = account(); mutation(connected); const h = fake({ connected });
@@ -133,16 +133,16 @@ for (const args of [[], ["--create-account"], ["--create-account", "--account-id
 }
 test("rounding probes exercise below/tie/above cases without changing pricing", async () => {
   const h = fake(); assert.equal(await tool.runSandboxVerification(h.stripe, key, { ...options, roundingProbes: true }, h.log), true);
-  assert.equal(h.writes.filter(row => row[0] === "intent").length, 5);
-  assert.deepEqual(h.writes.filter(row => row[0] === "intent").slice(2).map(row => row[1].amount), [499, 500, 501]);
+  assert.equal(h.writes.filter(row => row[0] === "intent").length, 4);
+  assert.deepEqual(h.writes.filter(row => row[0] === "intent").slice(1).map(row => row[1].amount), [399, 400, 401]);
 });
-for (const method of ["CARD", "ACH"]) test(`${method} actual Stripe request uses authoritative pricing and test fixture`, () => {
+for (const method of ["ACH"]) test(`${method} actual Stripe request uses authoritative pricing and test fixture`, () => {
   const p = quote(method), params = tool.directIntentParams(p, runId);
   assert.equal(params.amount, p.tenantTotalCents); assert.equal(params.application_fee_amount, p.rflApplicationFeeCents);
   assert.equal(params.transfer_data, undefined); assert.equal(params.payment_method, method === "CARD" ? "pm_card_visa" : "pm_usBankAccount_success");
 });
 test("economic mismatch is reported rather than changing pricing", () => {
-  const p = quote("CARD");
+  const p = quote("ACH");
   const charge = { id: "ch_test", balance_transaction: "txn_test", application_fee: "fee_test", application_fee_amount: p.rflApplicationFeeCents,
     livemode: false, paid: true, status: "succeeded", currency: "usd", amount: p.tenantTotalCents, amount_captured: p.tenantTotalCents };
   const tx = { id: "txn_test", source: charge.id, currency: "usd", amount: p.tenantTotalCents, fee: p.tenantProcessingFeeCents + 1,

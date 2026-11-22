@@ -72,6 +72,21 @@ export function assertCheckoutStartSource(baseline) {
 // for historical assertions. Unrelated financial/dispatch source edits still fail.
 export function historicalCheckoutSource(file, text) {
   text = text.replaceAll('\r\n', '\n');
+  if (file === 'prisma/schema.prisma') {
+    const marker = '// Additive only: historical SMS and CARD records remain untouched.';
+    if (text.includes(marker)) {
+      text = text.replace(marker, '');
+      for (const model of ['ManagerPushSubscription','PushEvent','PushDelivery']) {
+        const pattern = new RegExp('model '+model+' \\{[^}]*\\}\\s*', 'g');
+        assert.equal((text.match(pattern) ?? []).length, 1, 'One additive '+model);
+        text = text.replace(pattern, '');
+      }
+      text = text.trimEnd() + '\n';
+    }
+    text = text.replace(/^  pushSubscriptions ManagerPushSubscription\[\]\n/gm, '').replace(/^  pushEvents PushEvent\[\]\n/gm, '');
+    text = text.replace(/\n{3}(?=  instantPayoutRequests)/g, '\n\n');
+  }
+
   if (file === 'lib/passwordRecovery.ts') {
     // S6-P2 changes only this import, public wording and issuance-opening guard.
     // Require exact placement before any lookup/randomness; never normalize the

@@ -42,7 +42,8 @@ export async function assertCurrentVersionedReviewQuote(tx: Prisma.TransactionCl
   if (checkout.paymentId || checkout.chargeModel !== "DIRECT") return;
   const changed = () => { throw new CheckoutCalendarError("QUOTE_CHANGED", "Payment quote changed. Begin a new checkout and review the updated summary."); };
   if (!isDirectCheckoutArchitecture(checkout)) changed();
-  const price = priceRflDirectV1({ managementOwedCents: checkout.subtotalCents, paymentMethod: checkout.paymentMethod });
+  if (checkout.paymentMethod !== "ACH") changed();
+  const price = priceRflDirectV1({ managementOwedCents: checkout.subtotalCents, paymentMethod: checkout.paymentMethod as "ACH" });
   if (checkout.platformFeeCents !== price.tenantProcessingFeeCents || checkout.totalCents !== price.tenantTotalCents ||
       checkout.expectedStripeProcessingFeeCents !== price.expectedStripeProcessingFeeCents || checkout.rflApplicationFeeCents !== price.rflApplicationFeeCents) changed();
   if (checkout.sourceType === "CUSTOM_PAYMENT") { assertCustomPaymentQuote(checkout); return; }

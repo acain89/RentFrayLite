@@ -18,7 +18,7 @@ vm.runInThisContext(`(function(require,module,exports){${outputText}\n})`)(
 const { priceRflDirectV1: price, planManagementNetReconciliation: plan,
   roundPlanningPercentageCents: round, RFL_DIRECT_PRICING_VERSION: version,
   PLANNING_PERCENTAGE_ROUNDING: rounding } = loaded.exports;
-const methods = ["ACH", "CARD"];
+const methods = ["ACH"];
 const quote = (owed, method) => price({ managementOwedCents: owed, paymentMethod: method });
 
 function invariants(result) {
@@ -114,14 +114,14 @@ test("ACH processing reaches its cap on tenant total, with cent rounding", () =>
 });
 test("version and pricing output are stable, immutable, and leave inputs intact", () => {
   assert.equal(version,"RFL_DIRECT_V1");
-  const input = Object.freeze({ managementOwedCents:100000, paymentMethod:"CARD" });
+  const input = Object.freeze({ managementOwedCents:100000, paymentMethod:"ACH" });
   const first = price(input);
   assert.deepEqual(first,price(input)); assert.ok(Object.isFrozen(first));
   assert.throws(() => { first.tenantTotalCents = 1; },TypeError);
-  assert.deepEqual(input,{ managementOwedCents:100000, paymentMethod:"CARD" });
+  assert.deepEqual(input,{ managementOwedCents:100000, paymentMethod:"ACH" });
 });
 test("unknown payment methods cannot silently price as card", () => {
-  for (const method of ["card","CASH","",null,undefined]) assert.throws(() => quote(100,method),TypeError);
+  for (const method of ["CARD","card","CASH","",null,undefined]) assert.throws(() => quote(100,method),TypeError);
 });
 
 const plans = [

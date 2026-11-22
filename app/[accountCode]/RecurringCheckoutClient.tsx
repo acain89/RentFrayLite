@@ -7,7 +7,6 @@ import {
   useState,
 } from "react";
 
-import { TENANT_SMS_DISCLOSURE } from "@/lib/smsConsent";
 
 type CheckoutCharge = {
   id: string;
@@ -29,7 +28,7 @@ type RecurringCheckoutClientProps = {
   plans: CheckoutPlan[];
 };
 
-type PaymentMethod = "ACH" | "CARD";
+type PaymentMethod = "ACH";
 
 type CheckoutFormValues = {
   unitNumber: string;
@@ -98,7 +97,6 @@ export default function RecurringCheckoutClient({
       plans.length === 1 ? plans[0].id : ""
     );
 
-  const [smsConsent, setSmsConsent] = useState(false);
   const [formValues, setFormValues] =
     useState<CheckoutFormValues>(
       INITIAL_FORM_VALUES
@@ -229,7 +227,6 @@ export default function RecurringCheckoutClient({
             firstName,
             lastName,
             phone: phoneDigits,
-            smsConsent,
             paymentMethod:
               formValues.paymentMethod,
           }),
@@ -452,56 +449,9 @@ export default function RecurringCheckoutClient({
               />
             </div>
 
-            <label><input type="checkbox" checked={smsConsent} onChange={e => setSmsConsent(e.target.checked)} /> {TENANT_SMS_DISCLOSURE}</label>
             <p><Link href="/privacy">Privacy Policy</Link> and <Link href="/terms">Terms</Link></p>
 
-            {!isCustom ? <fieldset className="rfl-checkout-payment-method">
-              <legend>
-                Payment method
-              </legend>
-
-              <label>
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="ACH"
-                  checked={
-                    formValues.paymentMethod ===
-                    "ACH"
-                  }
-                  onChange={() =>
-                    updateFormValue(
-                      "paymentMethod",
-                      "ACH"
-                    )
-                  }
-                />
-
-                <span>Bank account</span>
-              </label>
-
-              <label>
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="CARD"
-                  checked={
-                    formValues.paymentMethod ===
-                    "CARD"
-                  }
-                  onChange={() =>
-                    updateFormValue(
-                      "paymentMethod",
-                      "CARD"
-                    )
-                  }
-                />
-
-                <span>
-                  Credit or debit card
-                </span>
-              </label>
-            </fieldset> : null}
+            <p>Payment method: ACH bank account.</p>
 
             {errorMessage ? (
               <div

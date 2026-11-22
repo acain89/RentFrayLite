@@ -1,11 +1,8 @@
-import { historicalCheckoutSource } from './helpers/checkout-financial-source.mjs';
-import { assertCheckoutStartSource } from './helpers/checkout-financial-source.mjs';
-import { assertCheckoutFinancialSource } from './helpers/checkout-financial-source.mjs';
+import {assertUnchangedAchCore,assertAdditivePushSchema,assertCheckoutMethodBoundary} from "./helpers/ach-cleanup-boundary.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import {readFileSync,readdirSync} from "node:fs";
-import {execFileSync} from "node:child_process";
 import {authHarness,postgres} from "./helpers/auth-harness.mjs";
 const identity={platformAccountId:"acct_platform",mode:"test"};
 const env={NODE_ENV:"production",NEXT_PUBLIC_BASE_URL:"https://example.test"};
@@ -73,7 +70,7 @@ for(const backend of postgres?["isolated","postgres"]:["isolated"]){
  test(`${backend}: ${change} mismatch quarantines provider recovery`,async()=>{const f=await fixture(backend),row=await f.reserve();await f.db.instantPayoutRequest.update({where:{id:row.id},data:{status:"SENDING"}});const obj=f.object(row);if(change==="amount")obj.amount++;else if(change==="destination")obj.destination="ba_wrong";else obj.metadata.rflConnectedAccountId="acct_wrong";f.p.objects=[obj];assert.equal((await f.recover()).status,"EXCEPTION");});
  test(`${backend}: reserved requests cannot be recovered as executed`,async()=>{const f=await fixture(backend);await f.reserve();await assert.rejects(()=>f.recover(),/No payout dispatch/);});
 }
-test("standard payouts, tenant pricing, payment history, SMS and reconciliation are source-identical",()=>{for(const file of ["lib/platformFees.ts","lib/rflDirectPricing.ts","lib/paymentArchitecturePolicy.ts","lib/directFinancialReconciliation.ts","lib/directFinancialObservation.ts","lib/stripePaymentWebhook.ts","lib/stripeConnection.ts","lib/stripe.ts","lib/smsDelivery.ts","app/api/public/checkout/session/route.ts","app/api/stripe/connect/route.ts"]){if(file==="app/api/public/checkout/session/route.ts"){assertCheckoutFinancialSource("5bb0b9782d8166451df49e9d747eb1619a0bc239");continue;}assert.equal(historicalCheckoutSource(file,readFileSync(file,"utf8")).replaceAll("\r\n","\n"),execFileSync("git",["show","5bb0b9782d8166451df49e9d747eb1619a0bc239:"+file],{encoding:"utf8",windowsHide:true}).replaceAll("\r\n","\n"),file);}});
+test("ACH cleanup preservation: assertUnchangedAchCore (standard payouts, tenant pricing, paym)",assertUnchangedAchCore);
 test("no route imports dormant payout modules; no mutation transport exists",()=>{const walk=d=>readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(d+"/"+e.name):[d+"/"+e.name]);for(const f of walk("app/api").filter(f=>/\.tsx?$/.test(f)))assert.doesNotMatch(readFileSync(f,"utf8"),/instantPayout|InstantPayout/);for(const f of ["lib/instantPayoutPolicy.ts","lib/instantPayoutReadiness.ts","lib/instantPayoutLifecycle.ts"])assert.doesNotMatch(readFileSync(f,"utf8"),/payouts\.create|charges\.create|transfers\.create|applicationFees\.|process\.env/);});
 if(postgres)test("postgres: additive journal constraints, provider uniqueness and financial history isolation",async()=>{const f=await fixture("postgres"),row=await f.reserve();for(const patch of [{selectedAmountCents:0},{rflFeeCents:251},{expectedReceivedCents:9749},{stripeMode:"unknown"},{status:"INVALID"},{eligibleFundsCents:9999}])await assert.rejects(()=>f.db.instantPayoutRequest.update({where:{id:row.id},data:patch}));const copy={...row,id:randomUUID()};await assert.rejects(()=>f.db.instantPayoutRequest.create({data:copy}));const second=await f.reserve(randomUUID());await f.db.instantPayoutRequest.update({where:{id:row.id},data:{stripePayoutId:"po_unique"+row.id}});await assert.rejects(()=>f.db.instantPayoutRequest.update({where:{id:second.id},data:{stripePayoutId:"po_unique"+row.id}}));assert.equal((await f.db.instantPayoutRequest.findUnique({where:{id:row.id}})).selectedAmountCents,10000);});
 
@@ -83,15 +80,6 @@ for(const backend of postgres?["isolated","postgres"]:["isolated"]){
  test(backend+": ownership changes during provider reads cannot mutate financial state",async()=>{const f=await fixture(backend),row=await f.reserve();await f.db.instantPayoutRequest.update({where:{id:row.id},data:{status:"SENDING"}});const obj=f.object(row);obj.status="paid";f.p.payouts.list=async()=>{await f.db.instantPayoutRequest.update({where:{id:row.id},data:{stripeMode:"live"}});return {data:[obj],has_more:false};};await assert.rejects(()=>f.recover());assert.equal((await f.db.instantPayoutRequest.findUnique({where:{id:row.id}})).status,"SENDING");});
 }
 
-test("existing Prisma models and historical migrations remain unchanged",()=>{
- const old=execFileSync("git",["show","5bb0b9782d8166451df49e9d747eb1619a0bc239:prisma/schema.prisma"],{encoding:"utf8",windowsHide:true}).replaceAll("\r\n","\n");
- const current=historicalCheckoutSource("prisma/schema.prisma",readFileSync("prisma/schema.prisma","utf8")).replaceAll("\r\n","\n").split("// Dormant payout journal")[0];
- for(const name of [...old.matchAll(/^model (\w+) \{/gm)].map(m=>m[1])){
-  const block=s=>s.slice(s.indexOf("model "+name+" {"),s.indexOf("\n}",s.indexOf("model "+name+" {"))+2).replace(/\n  instantPayoutRequests InstantPayoutRequest\[\]/g,"").replace(/\n{3,}/g,"\n\n");
-  assert.equal(block(current),block(old),name);
- }
- const files=execFileSync("git",["ls-tree","-r","--name-only","5bb0b9782d8166451df49e9d747eb1619a0bc239","--","prisma/migrations"],{encoding:"utf8",windowsHide:true}).trim().split(/\r?\n/);
- for(const file of files)assert.equal(readFileSync(file,"utf8").replaceAll("\r\n","\n"),execFileSync("git",["show","5bb0b9782d8166451df49e9d747eb1619a0bc239:"+file],{encoding:"utf8",windowsHide:true}).replaceAll("\r\n","\n"));
-});
+test("ACH cleanup preservation: assertAdditivePushSchema (existing Prisma models and historical )",assertAdditivePushSchema);
 
-test('checkout start ingress preserves the complete historical financial and authorization handler',()=>assertCheckoutStartSource('5bb0b9782d8166451df49e9d747eb1619a0bc239'));
+test("ACH cleanup preservation: assertCheckoutMethodBoundary (checkout start ingress preserves the c)",assertCheckoutMethodBoundary);

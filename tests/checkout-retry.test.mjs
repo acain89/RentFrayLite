@@ -13,7 +13,7 @@ const financial = payment => [payment.id, payment.payerFirstName, payment.payerL
   payment.referenceLabel, payment.billingCycle, payment.subtotalCents, payment.platformFeeCents,
   payment.totalChargedCents, payment.businessProceedsCents, payment.lineItemsSnapshot];
 
-for (const backend of backends) for (const method of ["ACH", "CARD"]) {
+for (const backend of backends) for (const method of ["ACH"]) {
   const label = backend + " " + method;
   test(label + ": three identical independent checkouts have distinct durable identities, Stripe keys and unchanged fees", async () => {
     const h = await harness(method, backend), checkouts = [], payments = [];
@@ -150,7 +150,7 @@ for (const backend of backends) for (const method of ["ACH", "CARD"]) {
     await h.webhook(a, a.intent, "payment_intent.payment_failed", "PAID");
     assert.deepEqual(financial(await h.db.payment.findUnique({ where: { id: a.payment.id } })), before);
     assert.deepEqual((await h.payments()).map(p => p.status), ["PAID", "PAID"]);
-    const notices = await h.db.smsReceipt.findMany(); assert.equal(notices.filter(n => [a.payment.id,b.payment.id].includes(n.paymentId)).length, 2);
+    const notices = await h.db.pushEvent.findMany(); assert.equal(notices.filter(n => [a.payment.id,b.payment.id].includes(n.paymentId)).length, 2);
     assert.equal((await h.db.auditLog.findMany({ where: { targetId: a.payment.id } })).filter(r => r.metadata?.stripeEventId === eventId).length, 1);
   });
   if (backend === "postgres") test(label + ": same-attempt resume waits for webhook Payment lock and observes committed PAID", async () => {

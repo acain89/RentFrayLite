@@ -154,7 +154,6 @@ const notReadyCases = [
   ["restriction", h => h.state.account.requirements.disabled_reason = "rejected.fraud", "STRIPE_RESTRICTED"],
   ["overdue requirements", h => h.state.account.requirements.past_due = ["business_profile.url"], "STRIPE_RESTRICTED"],
   ["platform charges disabled", h => h.state.platform.charges_enabled = false, "STRIPE_CHARGES"],
-  ["card unavailable", h => h.state.configuration.card.available = false, "STRIPE_PAYMENT_METHODS"],
   ["ACH unavailable", h => h.state.configuration.us_bank_account.available = false, "STRIPE_PAYMENT_METHODS"],
   ["default method configuration inactive", h => h.state.configuration.active = false, "STRIPE_PAYMENT_METHODS"],
   ["wrong Stripe account returned", h => h.state.account.id = "acct_other", "STRIPE_UNVERIFIED"],
@@ -174,7 +173,7 @@ for (const [name, change, code] of notReadyCases) {
   });
 }
 
-for (const method of ["ACH", "CARD"]) test(`${method}: real manager tier/billing/review â†’ code â†’ lookup â†’ checkout reconciles`, async () => {
+for (const method of ["ACH"]) test(`${method}: real manager tier/billing/review â†’ code â†’ lookup â†’ checkout reconciles`, async () => {
   const h = harness(); Object.assign(h.state.business, { status: "SETUP", setupStep: "CONFIGURE_RECURRING_TIERS", accountCode: null, accountCodeLockedAt: null, setupCompletedAt: null, recurringPlans: [] });
   assert.equal((await h.load("app/api/setup/recurring/tiers/route.ts").PUT(h.request({ tiers: [{ id: null, clientKey: "new", name: "Rent", amountCents: 100000 }], advance: true }, "PUT"))).status, 200);
   // New tiers now have valid fixed-date/5-day defaults; setup is still incomplete.
@@ -318,7 +317,7 @@ test("actual customer payment page renders only the correct ready business", asy
 });
 
 test("a transfers-only recipient need not process platform-owned ACH/card charges", async () => {
-  for (const method of ["ACH", "CARD"]) {
+  for (const method of ["ACH"]) {
     const h = harness(); h.state.account.charges_enabled = false;
     assert.equal((await h.readiness()).readyForLive, true);
     await h.prepare(method); assert.equal((await h.start()).status, 200);

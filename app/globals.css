@@ -5175,3 +5175,13 @@ input:focus-visible {
   .rfl-qr-instruction { font-size:17pt; margin:16pt 0 10pt; }
   .rfl-qr-url { font-size:12pt; text-decoration:none; }
 }
+
+/* Manager-only notification controls; do not affect payment or QR controls. */
+.rfl-push-panel { max-width:1100px; margin:20px auto; padding:24px; border:1px solid #cbdacc; border-radius:18px; background:#fff; color:#173c24; }
+.rfl-push-panel h2 { font-size:20px; margin:0 0 12px; }
+.rfl-push-panel p { margin:10px 0; line-height:1.5; }
+.rfl-push-actions { display:flex; flex-wrap:wrap; gap:12px; }
+.rfl-push-actions button { width:auto; padding:12px 20px; }
+.rfl-push-actions button:focus-visible { outline:3px solid #356d46; outline-offset:4px; }
+.rfl-push-panel li { padding:12px 0; border-bottom:1px solid #d7e1d8; }
+@media print { .rfl-push-panel { display:none!important; } }

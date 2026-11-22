@@ -35,7 +35,7 @@ export async function readStripeReadinessFacts(stripeAccountId: string): Promise
     chargesEnabled: account.charges_enabled, payoutsEnabled: account.payouts_enabled,
     transfersActive: account.capabilities?.transfers === "active", restricted,
     platformChargesEnabled: platform.charges_enabled && !platform.requirements?.disabled_reason,
-    cardAvailable: Boolean(configuration?.active && configuration.card?.available),
+    cardAvailable: false, // Historical compatibility field; not an ACH readiness gate.
     achAvailable: Boolean(configuration?.active && configuration.us_bank_account?.available),
     destinationSupported: account.country === platform.country,
   } };

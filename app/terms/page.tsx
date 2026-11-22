@@ -15,7 +15,7 @@ export default function TermsPage() {
           <h1>Terms of Service</h1>
           <p>Effective date: July 26, 2026</p>
           <p>Version 1.0</p>
-          <p>Payment SMS disclosures updated: October 25, 2026</p>
+          <p>Payment notifications updated: November 22, 2026</p>
         </header>
 
         <section>
@@ -154,7 +154,7 @@ export default function TermsPage() {
         <section>
           <h2>9. Returns, Disputes, Chargebacks, and Negative Balances</h2>
           <p>
-            ACH payments may be returned, and card payments may be
+            ACH payments may be returned, and historical card payments may be
             disputed or charged back. A payment initially shown as paid
             may later be reversed or returned.
           </p>
@@ -169,29 +169,10 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2>11. Payment-status SMS</h2>
-          <p>
-            Tenants and management may provide affirmative consent to receive
-            automated RentFrayLite payment-status texts at their authorized number.
-            Supplying a phone number alone does not provide SMS consent. Consent
-            is optional and is not a condition of payment. Messages concern
-            processing, success, failure, returns, or disputes; frequency varies.
-          </p>
-          <p>
-            Message and data rates may apply. Reply <strong>STOP</strong> to opt out or <strong>HELP</strong> for
-            help. Management may also turn Payment SMS Notifications off in
-            Settings. An application setting does not override a <strong>STOP</strong> opt-out.
-            Contact your property manager for payment assistance.
-          </p>
-          <p>
-            Delivery is not guaranteed and depends on Twilio, mobile carriers,
-            device settings, and network availability. Carriers are not liable
-            for delayed or undelivered messages. Keep your online payment
-            confirmation. SMS consent is not consent to marketing messages.
-          </p>
-          <p>
-            For SMS support, email <a href="mailto:helpdesk@rentfray.com">helpdesk@rentfray.com</a>.
-          </p>
+          <h2>11. Optional manager notifications</h2>
+          <p>Managers may enable browser push notifications for ACH processing and success events on supported devices. Browser permission is optional. Disable notifications on the device or sign out to stop alerts for that session.</p>
+          <p>Delivery is not guaranteed. Notifications describe status changes and may be delayed or superseded. Check the dashboard for the current payment status. ACH success does not mean funds have reached the business bank account. RentFrayLite no longer sends SMS notifications. Historical consent and delivery records may be retained under our retention obligations.</p>
+          <p>For support, email <a href="mailto:helpdesk@rentfray.com">helpdesk@rentfray.com</a>.</p>
         </section>
 
         <section>

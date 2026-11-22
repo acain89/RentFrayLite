@@ -81,14 +81,13 @@ const cases = [
   ["evidence.account.controller.type", "account", "DIRECT_CONTROL_UNAVAILABLE"],
   ["evidence.paymentMethods.accountId", "acct_platform", "ACCOUNT_MISMATCH"],
   ["evidence.paymentMethods.mode", "live", "MODE_MISMATCH"],
-  ["evidence.paymentMethods.cardAvailable", false, "CARD_NOT_ENABLED"],
   ["evidence.paymentMethods.achAvailable", false, "ACH_NOT_ENABLED"],
 ];
 for (const [field, value, code] of cases) test(`${field}=${JSON.stringify(value)} fails closed with ${code}`, () => {
   const facts = input(); change(facts, field, value);
   const result = evaluate(facts); assert.equal(result.ready, false); assert.ok(codes(result).includes(code));
 });
-for (const method of ["card_payments", "us_bank_account_ach_payments"]) {
+for (const method of ["us_bank_account_ach_payments"]) {
   for (const [state, code] of [["inactive", method === "card_payments" ? "CARD_NOT_ENABLED" : "ACH_NOT_ENABLED"],
     ["pending", method === "card_payments" ? "CARD_PENDING" : "ACH_PENDING"],
     [undefined, "DIRECT_CONFIGURATION_UNVERIFIED"]]) test(`${method} ${state} is not ready`, () => {
@@ -103,7 +102,7 @@ const missing = ["accountMode", "account.id", "account.charges_enabled", "accoun
   "account.controller.is_controller", "account.controller.type", "account.requirements", "account.requirements.disabled_reason",
   "account.requirements.currently_due", "account.requirements.past_due", "account.requirements.pending_verification",
   "account.requirements.errors", "paymentMethods", "paymentMethods.accountId", "paymentMethods.mode",
-  "paymentMethods.cardAvailable", "paymentMethods.achAvailable"];
+  "paymentMethods.achAvailable"];
 for (const field of missing) test(`missing evidence ${field} is UNVERIFIED`, () => {
   const facts = input(); change(facts, `evidence.${field}`, undefined);
   const result = evaluate(facts); assert.equal(result.ready, false); assert.equal(result.status, "UNVERIFIED");
@@ -151,7 +150,7 @@ test("configuration adapter uses actual effective availability, active and livem
   delete configuration.us_bank_account; assert.equal(methodsFrom("acct_management", configuration).achAvailable, null);
 });
 
-for (const method of ["ACH", "CARD"]) test(`${method}: actual checkout remains legacy despite absent direct facts`, async () => {
+for (const method of ["ACH"]) test(`${method}: actual checkout remains legacy despite absent direct facts`, async () => {
   const h = await harness(method, "isolated"), checkout = await h.prepare();
   const readiness = h.load("lib/businessPaymentReadiness.ts");
   assert.equal(readiness.getBusinessPaymentReadiness, readiness.getLegacyBusinessPaymentReadiness);

@@ -1,3 +1,4 @@
+import ManagerPushHistory from "@/components/ManagerPushHistory";
 import Link from "next/link";
 import { isValidBillingCycle } from "@/lib/billingCalendar";
 import { redirect } from "next/navigation";
@@ -54,7 +55,7 @@ export default async function ManagerDashboardPage(props: {searchParams?: Promis
     paymentMethod: getPaymentMethodLabel(payment.paymentMethod), timestamp: payment.timestamp,
   }));
   if ((await requireManager()).business.id !== business.id) redirect("/login/manager");
-  return <ManagerDashboardClient readiness={current.readiness} businessName={business.name} accountCode={business.accountCode ?? "-"}
+  return <ManagerDashboardClient notificationHistory={await ManagerPushHistory()} readiness={current.readiness} businessName={business.name} accountCode={business.accountCode ?? "-"}
     summary={{paid,pending,issues}} billingCycle={billingCycle} currentCycle={currentCycle}
     managerName={manager.displayName ?? manager.email} billingCycleLabel={billingCycleLabel}
     payments={payments} total={report.total} filters={filters} timeZone={timeZone} legacyTimeZone={business.propertyTimeZone === null}

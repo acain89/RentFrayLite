@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { harness } from "./helpers/checkout-harness.mjs";
 import { directStripeFixture } from "./helpers/stripe-foundation-harness.mjs";
 
-async function fixture(method = "CARD", sourceType = "RECURRING_PLAN", amount = "123.45", at = "2026-11-08T18:00Z") {
+async function fixture(method = "ACH", sourceType = "RECURRING_PLAN", amount = "123.45", at = "2026-11-08T18:00Z") {
   const clock = { now: at }, h = await harness(method, "isolated", clock), f = directStripeFixture();
   Object.assign(h.business, { createdAt: new Date("2026-10-15T12:00Z"), propertyTimeZone: "America/Chicago", firstStandardBillingDate: new Date("2026-11-01") });
   const plan = h.business.recurringPlans[0];
@@ -25,7 +25,7 @@ async function fixture(method = "CARD", sourceType = "RECURRING_PLAN", amount = 
   return { h, f, clock, plan, report, input, service, prepare, persist, review };
 }
 
-for (const method of ["CARD", "ACH"]) for (const [amount, cardFee, achFee] of [["1.00",200,100],["3.00",200,100],["24.99",200,100],["25.00",200,100],["25.01",300,150],["449.99",1900,950],["450.00",1900,950],["450.01",2000,995],["4999.99",20100,995],["5000.00",20100,995]]) {
+for (const method of ["ACH"]) for (const [amount, cardFee, achFee] of [["1.00",200,100],["3.00",200,100],["24.99",200,100],["25.00",200,100],["25.01",300,150],["449.99",1900,950],["450.00",1900,950],["450.01",2000,995],["4999.99",20100,995],["5000.00",20100,995]]) {
   test(`${method} direct versioned Custom $${amount} uses approved cent boundaries`, async () => {
     const f = await fixture(method, "CUSTOM_PAYMENT", amount), { pricing: q, architecture } = f.prepare();
     const cents = Number(amount.replace(".", ""));
@@ -41,7 +41,7 @@ for (const method of ["CARD", "ACH"]) for (const [amount, cardFee, achFee] of [[
   });
 }
 
-for (const method of ["CARD", "ACH"]) for (const sourceType of ["RECURRING_PLAN", "CUSTOM_PAYMENT"]) {
+for (const method of ["ACH"]) for (const sourceType of ["RECURRING_PLAN", "CUSTOM_PAYMENT"]) {
   const label = `${method} ${sourceType}`;
   test(`${label}: owned CREATED quote renders its stored itemization and becomes REVIEWED`, async () => {
     const f = await fixture(method, sourceType), q = await f.persist(), result = await f.review(q);
@@ -86,7 +86,7 @@ for (const method of ["CARD", "ACH"]) for (const sourceType of ["RECURRING_PLAN"
 }
 
 for (const change of ["base", "mandatory", "midnight", "calendar", "fee", "estimate", "item"]) test(`direct unreserved ${change} change rejects review without rewriting snapshot`, async () => {
-  const f = await fixture("CARD", "RECURRING_PLAN", undefined, "2026-11-09T05:59Z"), q = await f.persist();
+  const f = await fixture("ACH", "RECURRING_PLAN", undefined, "2026-11-09T05:59Z"), q = await f.persist();
   if (change === "base") f.plan.baseAmountCents++;
   if (change === "mandatory") f.plan.charges[0].amountCents++;
   if (change === "midnight") { f.clock.now = "2026-11-09T06:01Z"; await f.h.load("lib/checkoutConsent.ts").grantCheckoutConsentAccess(q.id); }
@@ -113,7 +113,7 @@ test("direct standard eligibility keeps first-cycle authority; Custom bypasses r
 });
 
 test("legacy pricing callback remains exact; public factory cannot issue direct even if a policy selector is forged", async () => {
-  const f = await fixture(); const old = f.h.load("lib/customPayment.ts").quoteCustomPayment(10000, "CARD");
+  const f = await fixture(); const old = f.h.load("lib/customPayment.ts").quoteCustomPayment(10000, "ACH");
   const result = f.service.prepareVersionedCheckoutQuote({ ...f.service.publicQuoteArchitecture(f.input.connectedAccountId), quote: () => old });
   assert.equal(result.pricing, old); assert.equal(result.architecture.chargeModel, "LEGACY_DESTINATION");
   assert.equal(result.architecture.rflApplicationFeeCents, old.platformFeeCents);
@@ -130,7 +130,7 @@ test("public legacy quote ignores standard architecture spoofing and rejects Cus
   assert.equal(response.status, 400); assert.equal(f.h.calls.creates.length, 0);
 });
 
-for (const method of ["ACH", "CARD"]) test(`${method}: direct standard aggregate maximum includes mandatory charges and late fees`, async () => {
+for (const method of ["ACH"]) test(`${method}: direct standard aggregate maximum includes mandatory charges and late fees`, async () => {
   const f = await fixture(method); f.plan.baseAmountCents = 493800;
   const q = f.prepare().pricing; assert.equal(q.subtotalCents, 500000); assert.equal(q.expectedManagementNetCents, 500000); assert.ok(q.totalCents > 500000);
   f.plan.baseAmountCents++; assert.throws(f.prepare, /managementOwedCents/);

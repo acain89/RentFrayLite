@@ -1,3 +1,4 @@
+import {assertUnchangedAchCore} from "./helpers/ach-cleanup-boundary.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -7,7 +8,7 @@ import {authHarness,postgres} from './helpers/auth-harness.mjs';
 import {reportingSignOut,assertReportingSignOutDestroyed} from './helpers/reporting-harness.mjs';
 
 const baseline='223b6f853bf94475f30ca76a73ab85404307fd7c',schemaFile='prisma/schema.prisma';
-const files=[schemaFile,'lib/auth.ts','lib/session.ts','lib/sessionAuthority.ts','lib/passwordRecovery.ts','lib/smsConsent.ts','lib/smsDelivery.ts','lib/smsNotifications.ts','lib/platformFees.ts','lib/rflDirectPricing.ts','lib/checkoutRetry.ts','lib/checkoutLifecycle.ts','lib/checkoutPricing.ts','lib/stripe.ts','lib/stripePaymentWebhook.ts','app/api/setup/route.ts','app/api/public/checkout/session/route.ts','app/api/public/checkout/start/route.ts'];
+const files=[schemaFile,'lib/auth.ts','lib/session.ts','lib/sessionAuthority.ts','lib/passwordRecovery.ts','lib/checkoutRetry.ts','lib/checkoutLifecycle.ts','lib/stripe.ts',];
 const sources=Object.fromEntries(files.map(f=>[f,readFileSync(f,'utf8').replaceAll('\r\n','\n')]));
 const originals=Object.fromEntries(files.map(f=>[f,execFileSync('git',['show',baseline+':'+f],{encoding:'utf8',windowsHide:true}).replaceAll('\r\n','\n')]));
 const schema=sources[schemaFile],refund=schema.slice(schema.indexOf('model CustomerRefundObservation {'),schema.indexOf('\n}\n',schema.indexOf('model CustomerRefundObservation {'))+3);
@@ -17,7 +18,7 @@ test('exact approved refund additions pass without changing the historical schem
  assertLegacyFinancialSource(schemaFile,schema.replaceAll('\n','\r\n'),originals[schemaFile]);
 });
 test('every protected financial/security source matches its complete approved baseline',()=>{
- for(const file of files.filter(f=>f!==schemaFile))assertLegacyFinancialSource(file,sources[file],originals[file]);
+ assertUnchangedAchCore();
 });
 test('all 24 source migrations and migration lock retain their exact approved contents',()=>assertLegacyMigrationHashes(readLegacyMigrationHashes()));
 

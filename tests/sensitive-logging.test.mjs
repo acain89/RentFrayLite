@@ -17,10 +17,9 @@ const unsafe = extra => Object.assign(new Error(privateValues.join(' / ')), {
 });
 const noPrivate = value => {const text=JSON.stringify(value);for(const p of privateValues)assert.ok(!text.includes(p),p);};
 for(const [fields,category] of [
-  [{type:'StripeInvalidRequestError'},'StripeInvalidRequestError'],[{code:21610},'TWILIO_OPTED_OUT'],
-  [{code:20429},'TWILIO_RATE_LIMITED'],[{code:'P1001'},'PRISMA_P1001'],[{code:'P2002'},'PRISMA_P2002'],
+  [{type:'StripeInvalidRequestError'},'StripeInvalidRequestError'],
+  [{code:'P1001'},'PRISMA_P1001'],[{code:'P2002'},'PRISMA_P2002'],
   [{code:'ETIMEDOUT'},'NETWORK_TIMEOUT'],[{code:privateValues[0],type:privateValues[1]},'UNEXPECTED_ERROR'],
-  [{classification:'SMS_OUTBOX_PERSISTENCE_FAILED'},'SMS_OUTBOX_PERSISTENCE_FAILED'],
 ])test(`allowlisted diagnostic ${category} never serializes raw error or reference`,async()=>{
   const h=await harness('ACH','isolated'),logger=h.load('lib/operationalLogging.ts');
   logger.logOperationalError('stripe_processing_failed',unsafe(fields),privateValues[6]);
@@ -42,12 +41,6 @@ test('Prisma automatic error events are sanitized, not written to stdout raw',as
   assert.deepEqual(JSON.parse(JSON.stringify(options)),{log:[{emit:'event',level:'error'}]});
   handler({message:privateValues.join(' '),target:'query',timestamp:new Date()});noPrivate(h.calls.errors);
   assert.equal(h.calls.errors.at(-1)[1].category,'DATABASE_ERROR');
-});
-test('Twilio client explicitly prevents ambient debug request/response logging',async()=>{
-  const h=await harness('ACH','isolated');let options;
-  h.mocks.twilio={__esModule:true,default:(_sid,_token,opts)=>{options=opts;return{messages:{create:async()=>({sid:'SM'+'1'.repeat(32)})}};}};
-  h.load('lib/smsDelivery.ts').twilioSmsProvider({NEXT_PUBLIC_BASE_URL:'https://example.test',TWILIO_ACCOUNT_SID:'AC'+'1'.repeat(32),TWILIO_AUTH_TOKEN:privateValues[0],TWILIO_PHONE_NUMBER:'+13125550100'});
-  assert.equal(options.logLevel,'error');assert.equal(options.autoRetry,false);assert.equal(options.timeout,8000);noPrivate(h.calls.errors);
 });
 test('checkout provider failure response and logs are private without altering reservation state',async()=>{
   const h=await harness('ACH','isolated'),q=await h.prepare();
@@ -78,11 +71,6 @@ for(const signatureFailure of [true,false])test(`webhook ${signatureFailure?'sig
   // The route intentionally collapses all failed signature-secret candidates
   // into its own generic verification error; retain that safe classification.
   assert.equal(logged.category,signatureFailure?'VERIFICATION_FAILED':'UNKNOWN_PAYMENT_OWNERSHIP');
-});
-for(const route of ['status','inbound'])test(`Twilio ${route} failures return retryable responses without provider detail`,async()=>{
-  const h=await harness('ACH','isolated');h.mocks['@/lib/smsDelivery']={SmsCallbackInvalid:class extends Error{},applySmsStatus:async()=>{throw unsafe({code:20429});},applySmsOptOut:async()=>{throw unsafe({code:20429});}};
-  const r=await h.load(`app/api/twilio/${route}/route.ts`).POST(new Request('https://example.test/api',{method:'POST'}));
-  assert.equal(r.status,503);assert.equal(await r.text(),'');noPrivate(h.calls.errors);
 });
 test('authentication failures never echo credentials or internal database errors',async()=>{
   const h=await authHarness('isolated',undefined,{'@/lib/auth':{authenticateManager:async()=>{throw unsafe({code:'P1001'});}}});

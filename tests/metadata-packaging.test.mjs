@@ -1,3 +1,4 @@
+import {assertAchDependencyBoundary} from "./helpers/ach-cleanup-boundary.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -63,14 +64,7 @@ test('nonmarketing responses default to noindex without changing credential priv
 });
 
 const copyScript=path.join(root,'scripts/copy-standalone-assets.mjs');
-test('production startup uses only the packaged standalone assets and dependencies are unchanged',()=>{
-  const current=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'));
-  const prior=JSON.parse(execFileSync('git',['show','2e4123fd5166a2936513b7b7f0bafedf1504114c:package.json'],{cwd:root,encoding:'utf8',windowsHide:true}));
-  assert.equal(current.scripts.start,'node .next/standalone/server.js');
-  assert.equal(current.scripts.build,'node scripts/copy-standalone-assets.mjs --check-release-inputs && next build --webpack && node scripts/copy-standalone-assets.mjs');
-  assert.deepEqual(current,prior);
-  assert.equal(readFileSync(path.join(root,'package-lock.json'),'utf8').replaceAll('\r\n','\n'),execFileSync('git',['show','2e4123fd5166a2936513b7b7f0bafedf1504114c:package-lock.json'],{cwd:root,encoding:'utf8',windowsHide:true}).replaceAll('\r\n','\n'));
-});
+test("ACH/push changes only the intended dependencies and preserves all remaining versions",assertAchDependencyBoundary);
 async function fixture(t){
   const parent=path.resolve(os.tmpdir()),dir=await mkdtemp(path.join(parent,'rfl-metadata-package-'));
   t.after(async()=>{

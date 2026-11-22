@@ -38,7 +38,7 @@ test("disabled actual creation and financial entry points touch no dependencies 
   assert.deepEqual(await h.load("lib/directFinancialRunner.ts").processDirectFinancialQueue(forbidden, forbidden, forbidden), { status: "DISABLED", attempted: 0, busy: 0, failed: 0 });
 });
 
-async function fresh(method = "CARD", sourceType = "CUSTOM_PAYMENT") {
+async function fresh(method = "ACH", sourceType = "CUSTOM_PAYMENT") {
   const h = await harness(method, "isolated"), f = directStripeFixture(); f.input.connectedAccountId = h.business.stripeConnection.stripeAccountId; f.state.account.id = f.input.connectedAccountId;
   const report = await h.load("lib/stripeDirectReadiness.ts").readDirectChargeReadiness(f.stripe, f.input), lifecycle = h.load("lib/directCheckoutLifecycle.ts"), dispatch = h.load("lib/checkoutDispatch.ts");
   h.business.recurringPlans[0].businessId = h.business.id;
@@ -49,7 +49,7 @@ async function fresh(method = "CARD", sourceType = "CUSTOM_PAYMENT") {
   await h.load("lib/checkoutConsent.ts").grantCheckoutConsentAccess(checkout.id); await lifecycle.grantDirectReviewAccess(checkout.id);
   return { h, f, checkout, report, lifecycle, dispatch, policy: h.load("lib/paymentArchitecturePolicy.ts"), context: { identity, report, origin: "https://example.test" } };
 }
-for (const method of ["ACH", "CARD"]) for (const sourceType of ["CUSTOM_PAYMENT", "RECURRING_PLAN"]) {
+for (const method of ["ACH"]) for (const sourceType of ["CUSTOM_PAYMENT", "RECURRING_PLAN"]) {
   const label = `${method} ${sourceType}`;
   test(`${label}: default rollback prevents direct first reservation with no Payment or quote changes`, async () => {
     const f = await fresh(method, sourceType), before = await f.h.db.checkoutSession.findUnique({ where: { id: f.checkout.id } });
@@ -78,13 +78,13 @@ test("a hypothetical allowed reservation still requires real reader proof, never
 });
 
 test("rollback recheck after delayed plan loading prevents a new write", async () => {
-  const f = await fresh("CARD", "RECURRING_PLAN"); f.policy.directReservationEnabled = () => true;
+  const f = await fresh("ACH", "RECURRING_PLAN"); f.policy.directReservationEnabled = () => true;
   const read = f.h.db.recurringPlan.findFirst; f.h.db.recurringPlan.findFirst = async args => { const result = await read(args); f.policy.directReservationEnabled = () => false; return result; };
   await assert.rejects(() => f.lifecycle.reserveDirectAttempt(f.h.db, f.checkout.id, f.report, identity), /reservations are disabled/);
   assert.equal((await f.h.payments()).length, 0); assert.equal(f.h.calls.creates.length, 0);
 });
 
-for (const method of ["ACH", "CARD"]) test(`${method}: ambiguous reserved attempt after rollback repairs only original pointer and never prepares a create`, async () => {
+for (const method of ["ACH"]) test(`${method}: ambiguous reserved attempt after rollback repairs only original pointer and never prepares a create`, async () => {
   const f = await webhookFixture("isolated", "DIRECT", method), original = await f.current();
   await f.db.payment.update({ where: { id: original.id }, data: { status: "CREATED", stripeCheckoutSessionId: null, stripePaymentIntentId: null, stripeChargeId: null } });
   await f.db.checkoutSession.update({ where: { id: f.checkout.id }, data: { paymentId: null, stripeCheckoutSessionId: null, status: "REVIEWED" } });
@@ -96,7 +96,7 @@ for (const method of ["ACH", "CARD"]) test(`${method}: ambiguous reserved attemp
   assert.equal(recovered.payment.id, original.id); assert.equal(recovered.payment.totalChargedCents, original.totalChargedCents); assert.deepEqual(recovered.payment.lineItemsSnapshot, original.lineItemsSnapshot);
 });
 
-for (const method of ["ACH", "CARD"]) test(`${method}: historical direct webhooks still settle/deduplicate under legacy-only policy`, async () => {
+for (const method of ["ACH"]) test(`${method}: historical direct webhooks still settle/deduplicate under legacy-only policy`, async () => {
   const f = await webhookFixture("isolated", "DIRECT", method), original = await f.current();
   assert.equal((await f.send(f.event("checkout.session.completed"))).status, 200);
   f.settle(); const event = f.event(); assert.equal((await f.send(event)).status, 200); assert.equal((await f.send(event)).status, 200);

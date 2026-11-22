@@ -1,7 +1,6 @@
 import { requireCredentialOrigin } from "@/lib/credentialRequest";
 import { publicJson, publicJsonFailure } from "@/lib/publicJson";
 import { publicRequestGuard } from "@/lib/publicRequestBudget";
-import { smsPhone, SMS_CONSENT_VERSION } from "@/lib/smsConsent";
 import { SetupStep } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { hashPassword } from "@/lib/password";
@@ -34,7 +33,6 @@ export async function POST(request: Request) {
     );
   }
 
-  if (parsed.data.smsConsent && !smsPhone(parsed.data.contactPhone)) return NextResponse.json({error:"SMS consent requires a valid U.S. phone number."},{status:400});
 
   const denied = await publicRequestGuard(prisma, "SIGNUP", parsed.data.managerEmail);
   if (denied) return denied;
@@ -68,10 +66,6 @@ export async function POST(request: Request) {
         ownerName: parsed.data.ownerName,
         contactEmail: parsed.data.contactEmail,
         contactPhone: parsed.data.contactPhone,
-        paymentSmsEnabled: true,
-        smsConsentAt: parsed.data.smsConsent ? new Date() : null,
-        smsConsentVersion: parsed.data.smsConsent ? SMS_CONSENT_VERSION : null,
-        smsConsentPhone: parsed.data.smsConsent ? smsPhone(parsed.data.contactPhone) : null,
 
         setupStep:
           SetupStep.CONFIGURE_RECURRING_TIERS,

@@ -1,3 +1,4 @@
+import {assertUnchangedAchCore,assertAdditivePushSchema} from "./helpers/ach-cleanup-boundary.mjs";
 import assert from 'node:assert/strict';
 import test,{before,after} from 'node:test';
 import {readFileSync} from 'node:fs';
@@ -25,13 +26,14 @@ async function view(width,extra={}){
  });
  await page.goto('https://example.test/setup/stripe');return {page,requests,external,respond:result=>respond(result)};
 }
-test('cosmetic patch preserves request handlers, navigation, API/recovery code and tier editor logic',()=>{
- const base=n=>execFileSync('git',['show','HEAD:'+n],{encoding:'utf8'}).replaceAll('\r\n','\n'),current=n=>readFileSync(n,'utf8').replaceAll('\r\n','\n');
+test('setup retains handlers, navigation, recovery and tier editor through ACH cleanup',()=>{
+ assertUnchangedAchCore();assertAdditivePushSchema();
+ const base=n=>execFileSync('git',['show','88d9f1ab0d136961eac7c9258cce1c88bb923a53:'+n],{encoding:'utf8'}).replaceAll('\r\n','\n'),current=n=>readFileSync(n,'utf8').replaceAll('\r\n','\n');
  const bank='app/setup/stripe/BankSetupClient.tsx',cut=s=>s.slice(0,s.indexOf('  return (\n    <main'));
  assert.equal(cut(current(bank)),cut(base(bank)));
  const actions=s=>s.slice(s.indexOf('        <div className="rfl-bank-actions">'),s.indexOf('        </div>',s.indexOf('        <div className="rfl-bank-actions">'))+14);assert.equal(actions(current(bank)),actions(base(bank)));
  const tiers='app/setup/recurring/tiers/RecurringTiersClient.tsx',link='<a href={"/setup/recurring/tiers?incremental=1"+(settingsMode?"&mode=settings":"")}>Edit one tier at a time</a>\n';assert.equal(current(tiers),base(tiers).replace(link,''));
- for(const n of ['app/api/stripe/connect/route.ts','app/api/setup/recurring/review/route.ts','lib/stripeAccountProvisioning.ts','lib/stripeProvisioningAttempt.ts','lib/stripeConnectRecovery.ts','scripts/prepare-stripe-connect-recovery.ts','prisma/schema.prisma','lib/paymentReadiness.ts','lib/businessPaymentReadiness.ts','app/setup/stripe/page.tsx'])assert.equal(current(n),base(n),n);
+ for(const n of ['app/api/stripe/connect/route.ts','app/api/setup/recurring/review/route.ts','lib/stripeProvisioningAttempt.ts','lib/stripeConnectRecovery.ts','scripts/prepare-stripe-connect-recovery.ts','app/setup/stripe/page.tsx'])assert.equal(current(n),base(n),n);
 });
 for(const width of [375,1280]){
  test(`Stripe introduction is compact, semantic and readable at ${width}px`,async()=>{

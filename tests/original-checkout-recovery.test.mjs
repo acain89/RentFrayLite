@@ -215,8 +215,8 @@ for (const model of ["LEGACY_DESTINATION", "DIRECT"]) {
   });
 }
 
-test("legacy card failure resumes the original browser-authorized session after repair", async () => {
-  const f = await fixture(); f.session.status = "open"; f.intent.status = "requires_payment_method"; f.intent.amount_received = 0;
+test("legacy ACH failure resumes the original browser-authorized session after repair", async () => {
+  const f = await fixture("LEGACY_DESTINATION", "ACH"); f.session.status = "open"; f.intent.status = "requires_payment_method"; f.intent.amount_received = 0;
   await f.recover();
   // The webhook fixture exposes minimal account identity objects. Restore the
   // normal ready-account shape for the existing public readiness checks.
@@ -231,7 +231,7 @@ test("legacy card failure resumes the original browser-authorized session after 
 });
 
 test("real mocked lost legacy create response restores the original session, never replays creation", async () => {
-  const h = await harness("CARD", "isolated"), checkout = await h.prepare();
+  const h = await harness("ACH", "isolated"), checkout = await h.prepare();
   h.live.createFailure = true; assert.equal((await h.start(checkout)).status, 500);
   const [p] = await h.payments(), [session] = h.live.sessions.values();
   assert.equal(p.status, "FAILED"); assert.equal(p.stripeCheckoutSessionId, null); assert.ok(session);

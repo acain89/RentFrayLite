@@ -57,7 +57,7 @@ export function accountCreateParams(runId: string): Stripe.AccountCreateParams {
     controller: { fees: { payer: "account" }, losses: { payments: "stripe" },
       requirement_collection: "stripe", stripe_dashboard: { type: "full" } },
     // Stripe documents card_payments requests require transfers as well.
-    capabilities: { card_payments: { requested: true }, us_bank_account_ach_payments: { requested: true }, transfers: { requested: true } },
+    capabilities: { us_bank_account_ach_payments: { requested: true }, transfers: { requested: true } },
     business_profile: { name: "RFL Sandbox Verification", url: "https://accessible.stripe.com", support_phone: "0000000000", mcc: "6513", product_description: "Sandbox-only rent payments" },
     individual: { first_name: "RFL", last_name: "Sandbox", email: "rfl-sandbox@example.com", phone: "0000000000",
       dob: { day: 1, month: 1, year: 1901 }, id_number: "000000000",
@@ -79,7 +79,6 @@ export function accountBlockers(account: Stripe.Account, runId: string): string[
   if (account.charges_enabled !== true) blockers.push("CHARGES_NOT_ENABLED");
   if (account.payouts_enabled !== true) blockers.push("PAYOUTS_NOT_ENABLED");
   if (account.details_submitted !== true) blockers.push("DETAILS_NOT_SUBMITTED");
-  if (account.capabilities?.card_payments !== "active") blockers.push("CARD_NOT_ACTIVE");
   if (account.capabilities?.us_bank_account_ach_payments !== "active") blockers.push("ACH_NOT_ACTIVE");
   const requirements = account.requirements;
   if (!requirements || requirements.disabled_reason !== null ||
@@ -90,8 +89,8 @@ export function accountBlockers(account: Stripe.Account, runId: string): string[
 export function directIntentParams(pricing: RflDirectPricing, runId: string): Stripe.PaymentIntentCreateParams {
   return {
     amount: pricing.tenantTotalCents, currency: "usd", application_fee_amount: pricing.rflApplicationFeeCents,
-    payment_method_types: [pricing.paymentMethod === "CARD" ? "card" : "us_bank_account"],
-    payment_method: pricing.paymentMethod === "CARD" ? "pm_card_visa" : "pm_usBankAccount_success",
+    payment_method_types: ["us_bank_account"],
+    payment_method: "pm_usBankAccount_success",
     confirm: true, description: "RFL sandbox architecture verification",
     metadata: { rflSandboxVerification: "phase35", runId, pricingVersion: pricing.pricingVersion,
       managementOwedCents: String(pricing.managementOwedCents), paymentMethod: pricing.paymentMethod },
@@ -151,16 +150,16 @@ export async function runSandboxVerification(stripe: Stripe, key: string, option
   log("ACCOUNT_SUBRESOURCE_IDS", { individualPerson: account.individual?.id ?? null,
     externalAccounts: account.external_accounts?.data.map(external => ({ id: external.id, object: external.object })) ?? [],
     requestedCapabilities: Object.keys(account.capabilities ?? {}) });
-  for (const paymentMethod of ["CARD", "ACH"] as const) log("PRICING", priceRflDirectV1({ managementOwedCents: 100000, paymentMethod }));
+  for (const paymentMethod of ["ACH"] as const) log("PRICING", priceRflDirectV1({ managementOwedCents: 100000, paymentMethod }));
   const blockers = accountBlockers(account, options.runId);
   if (blockers.length) { log("FAIL_ACCOUNT_ELIGIBILITY_NO_PAYMENTS_CREATED", blockers); return false; }
   const scope = { stripeAccount: account.id };
   const connectedBalance = await stripe.balance.retrieve({}, scope);
   requireSafe(connectedBalance.object === "balance" && connectedBalance.livemode === false, "STOP: connected non-live balance not verified.");
   let passed = true;
-  const cases: { paymentMethod: "CARD" | "ACH"; managementOwedCents: number }[] = [
-    { paymentMethod: "CARD", managementOwedCents: 100000 }, { paymentMethod: "ACH", managementOwedCents: 100000 },
-    ...(options.roundingProbes ? [299, 300, 301].map(managementOwedCents => ({ paymentMethod: "CARD" as const, managementOwedCents })) : []),
+  const cases: { paymentMethod: "ACH"; managementOwedCents: number }[] = [
+    { paymentMethod: "ACH", managementOwedCents: 100000 },
+    ...(options.roundingProbes ? [299, 300, 301].map(managementOwedCents => ({ paymentMethod: "ACH" as const, managementOwedCents })) : []),
   ];
   for (const sample of cases) {
     const pricing = priceRflDirectV1(sample);

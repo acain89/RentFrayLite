@@ -1,7 +1,6 @@
 import { requireCredentialOrigin } from "@/lib/credentialRequest";
 import { publicJson, publicJsonFailure } from "@/lib/publicJson";
 import { publicRequestGuard } from "@/lib/publicRequestBudget";
-import { checkoutSmsConsent } from "@/lib/smsConsent";
 import { CheckoutConsentInvalid, grantCheckoutConsentAccess, retainedCheckoutConsent } from "@/lib/checkoutConsent";
 import {
   CheckoutSessionStatus,
@@ -29,7 +28,6 @@ type CreateCheckoutSessionRequest = {
   firstName?: unknown;
   lastName?: unknown;
   phone?: unknown;
-  smsConsent?: unknown;
   previousCheckoutSessionId?: unknown;
   paymentMethod?: unknown;
   sourceType?: unknown;
@@ -44,8 +42,7 @@ function isPaymentMethod(
   value: unknown
 ): value is PaymentMethod {
   return (
-    value === PaymentMethod.ACH ||
-    value === PaymentMethod.CARD
+    value === PaymentMethod.ACH
   );
 }
 
@@ -87,14 +84,14 @@ async function createSession(request: Request) {
 
   if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   const previousCheckoutSessionId = getTrimmedString(body.previousCheckoutSessionId);
-  if (body.previousCheckoutSessionId !== undefined && (!previousCheckoutSessionId || previousCheckoutSessionId.length > 128 || body.smsConsent !== undefined)) {
+  if (body.previousCheckoutSessionId !== undefined && (!previousCheckoutSessionId || previousCheckoutSessionId.length > 128)) {
     return NextResponse.json({ error: "Invalid checkout consent transfer." }, { status: 400 });
   }
   const sourceType = body.sourceType === undefined ? "RECURRING_PLAN" : body.sourceType;
   if (sourceType !== "RECURRING_PLAN" && sourceType !== "CUSTOM_PAYMENT") return NextResponse.json({ error: "Select a valid payment type." }, { status: 400 });
   let customAmountCents: number | null = null;
   if (sourceType === "CUSTOM_PAYMENT") {
-    const allowed = new Set(["sourceType", "accountCode", "amount", "unitNumber", "firstName", "lastName", "phone", "paymentMethod", "smsConsent", "previousCheckoutSessionId"]);
+    const allowed = new Set(["sourceType", "accountCode", "amount", "unitNumber", "firstName", "lastName", "phone", "paymentMethod", "previousCheckoutSessionId"]);
     if (Object.keys(body).some(key => !allowed.has(key))) return NextResponse.json({ error: "Custom Payments cannot include tier, calendar, fee or total fields." }, { status: 400 });
     try { customAmountCents = parseCustomPaymentAmount(body.amount); }
     catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid Custom Payment amount.", field: "amount" }, { status: 400 }); }
@@ -115,8 +112,7 @@ async function createSession(request: Request) {
     getTrimmedString(body.lastName)
   );
 
-  let consent;
-  try { consent = checkoutSmsConsent(body.smsConsent); } catch { return NextResponse.json({error:"Invalid SMS consent."},{status:400}); }
+  const consent = { smsConsentAt: null as Date | null, smsConsentVersion: null as string | null };
   const phone = normalizePhone(
     getTrimmedString(body.phone)
   );

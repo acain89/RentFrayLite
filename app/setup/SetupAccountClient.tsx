@@ -8,7 +8,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROPERTY_TIME_ZONE_OPTIONS } from "@/lib/managementBillingSetup";
 
-import { formatRegistrationPhone, normalizeRegistrationPhone, REGISTRATION_PHONE_INVALID, REGISTRATION_SMS_PHONE_REQUIRED } from "@/lib/registrationPhone";
+import { formatRegistrationPhone, normalizeRegistrationPhone, REGISTRATION_PHONE_INVALID } from "@/lib/registrationPhone";
 
 type SetupResponse = {
   redirectTo?: string;
@@ -19,7 +19,6 @@ export default function SetupAccountClient() {
   const router = useRouter();
 
   const [phone, setPhone] = useState("");
-  const [smsConsent, setSmsConsent] = useState(false);
   const [phoneError, setPhoneError] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -36,7 +35,6 @@ export default function SetupAccountClient() {
     setError("");
     setPhoneError("");
     const contactPhone = normalizeRegistrationPhone(formData.get("contactPhone"));
-    if (smsConsent && !contactPhone) { setPhoneError(REGISTRATION_SMS_PHONE_REQUIRED); return; }
     if (phone.trim() && !contactPhone) { setPhoneError(REGISTRATION_PHONE_INVALID); return; }
     if (!isNewManagementPassword(formData.get("password"))) { setError("Use at least 8 characters with an uppercase letter, a lowercase letter and a number. Avoid unsupported characters or an overly long password."); return; }
     setSubmitting(true);
@@ -52,7 +50,6 @@ export default function SetupAccountClient() {
           ownerName: formData.get("ownerName"),
           email: formData.get("email"),
           contactPhone: contactPhone ?? undefined,
-          smsConsent,
           propertyTimeZone: formData.get("propertyTimeZone"),
           password: formData.get("password"),
           confirmPassword: formData.get("confirmPassword"),
@@ -141,7 +138,7 @@ export default function SetupAccountClient() {
                 onChange={event => {
                   const value = formatRegistrationPhone(event.target.value);
                   setPhone(value);
-                  setPhoneError(smsConsent && !normalizeRegistrationPhone(value) ? REGISTRATION_SMS_PHONE_REQUIRED : "");
+                  setPhoneError("");
                 }}
                 aria-invalid={!!phoneError}
                 aria-describedby={phoneError ? "registration-phone-error" : undefined}
@@ -151,21 +148,6 @@ export default function SetupAccountClient() {
             </div>
           </div>
 
-          <div className="rfl-field">
-            <label className="rfl-legal-acceptance">
-              <input type="checkbox" name="smsConsent" value="yes" checked={smsConsent}
-                onChange={event => {
-                  setSmsConsent(event.target.checked);
-                  setPhoneError(event.target.checked && !normalizeRegistrationPhone(phone) ? REGISTRATION_SMS_PHONE_REQUIRED : "");
-                }}
-                aria-describedby="registration-sms-disclosure" />
-              <span>Send me RentFrayLite payment updates by text (optional).</span>
-            </label>
-            <p id="registration-sms-disclosure" className="rfl-field-help">
-              Automated texts. Frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out or HELP for help. Consent isn&apos;t required to sign up.
-              {" "}<Link href="/terms" target="_blank">SMS Terms</Link>{" \u00b7 "}<Link href="/privacy" target="_blank">Privacy</Link>
-            </p>
-          </div>
 
           <div className="rfl-field rfl-registration-timezone">
             <label htmlFor="propertyTimeZone">Property timezone</label>

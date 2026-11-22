@@ -24,7 +24,7 @@ export async function grantCheckoutConsentAccess(id: string) {
   });
 }
 
-// Ownership does not imply SMS consent. Old unreserved cookies without a signed
+// Ownership is separate from historical SMS consent. Old unreserved cookies without a signed
 // expiry must restart; reserved payments retain their separate result binding.
 export async function hasCheckoutQuoteAccess(id: string): Promise<boolean> {
   const token = (await cookies()).get(cookieName(id))?.value ?? "";
@@ -57,5 +57,5 @@ export async function retainedCheckoutConsent(tx: Prisma.TransactionClient, id: 
       Object.entries(expected).some(([key, value]) => source[key as keyof typeof source] !== value)) {
     throw new CheckoutConsentInvalid("Checkout no longer matches this payment. Please begin again.");
   }
-  return { smsConsentAt: source.smsConsentAt, smsConsentVersion: source.smsConsentVersion };
+  return { smsConsentAt: null, smsConsentVersion: null };
 }

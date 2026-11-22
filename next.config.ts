@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
     const privateHeaders = ["/api/:path*", "/manager/:path*", "/admin/:path*", "/setup/:path*", "/login/:path*", "/payment/:path*"].map(source => ({ source, headers: [
       { key: "Cache-Control", value: "private, no-store, max-age=0" }, { key: "Referrer-Policy", value: "no-referrer" },
     ] }));
-    return [...credentialHeaders, ...privateHeaders, {
+    return [{ source: "/manager-sw.js", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }, { key: "Service-Worker-Allowed", value: "/" }, { key: "X-Content-Type-Options", value: "nosniff" }] }, ...credentialHeaders, ...privateHeaders, {
       source: "/:accountCode/review",
       headers: [{ key: "Cache-Control", value: "private, no-store, max-age=0" }, { key: "Referrer-Policy", value: "no-referrer" }],
     }, {

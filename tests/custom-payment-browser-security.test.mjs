@@ -55,7 +55,7 @@ for(const backend of postgres?['isolated','postgres']:['isolated']){
     const before=await snapshot(h);
     await assert.rejects(()=>h.review(q),/NOT_FOUND/);
     assert.equal((await h.start(q)).status,403);
-    assert.equal((await h.create('123.45',{paymentMethod:'CARD',previousCheckoutSessionId:q.id})).status,403);
+    assert.equal((await h.create('123.45',{paymentMethod:'ACH',previousCheckoutSessionId:q.id})).status,403);
     assert.deepEqual(await snapshot(h),before);
   });
 

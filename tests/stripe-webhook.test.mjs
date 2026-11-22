@@ -43,7 +43,7 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
     pricingVersion:"RFL_LEGACY_V1",chargeModel:"LEGACY_DESTINATION",stripeConnectedAccountId:"acct_test",expectedStripeProcessingFeeCents:null,rflApplicationFeeCents:fee,expectedManagementNetCents:payment.subtotalCents,
     subtotalCents: payment.subtotalCents, lineItems: clone(payment.lineItemsSnapshot), totalCents: payment.totalChargedCents, platformFeeCents: fee,
   };
-  const state = { payments: new Map([[payment.id, payment]]), checkouts: new Map([[checkout.id, checkout]]), receipts: new Map(), audits: [] };
+  const state = { payments: new Map([[payment.id, payment]]), checkouts: new Map([[checkout.id, checkout]]), pushEvents: new Map(), receipts: new Map(), audits: [] };
   const live = {
     session: {
       id: "cs_test", object: "checkout.session", livemode: false, mode: "payment", status: "complete", payment_status: "unpaid",
@@ -105,6 +105,7 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
       let lockedId;
       const paymentWrites = new Set(), checkoutWrites = new Set(), receiptWrites = new Set();
       const newAudits = [];
+      const pushWrites = new Set();
       const ensureLocked = () => assert.ok(draft, "DB status/side-effect access must occur after the row lock");
       const tx = {
         $queryRaw: async (query) => {
@@ -119,6 +120,7 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
           draft = clone(state);
           return state.payments.has(lockedId) ? [{ id: lockedId }] : [];
         },
+        pushEvent: { upsert: async ({ where, create }) => { ensureLocked(); if (!draft.pushEvents.has(where.id)) { draft.pushEvents.set(where.id, clone(create)); pushWrites.add(where.id); } } },
         payment: {
           findUnique: async ({ where }) => { ensureLocked(); return find(draft.payments, where); },
           updateMany: async ({ where, data }) => {
@@ -172,6 +174,7 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
         for (const id of paymentWrites) state.payments.set(id, draft.payments.get(id));
         for (const id of checkoutWrites) state.checkouts.set(id, draft.checkouts.get(id));
         for (const id of receiptWrites) state.receipts.set(id, draft.receipts.get(id));
+        for (const id of pushWrites) state.pushEvents.set(id, draft.pushEvents.get(id));
         state.audits.push(...newAudits);
         calls.paymentWrites += paymentWrites.size; calls.checkoutWrites += checkoutWrites.size; calls.receiptCreates += receiptWrites.size;
       } finally { release?.(); }
@@ -264,7 +267,6 @@ function harness(method = "ACH", initialStatus = "CHECKOUT_STARTED") {
   return { state, live, calls, faults, hooks, event, send, settle, fail, dispute, render,
     payment: () => state.payments.get("payment-test"),
     rules: load("lib/paymentStatus.ts"),
-    dispatch: receiptId => load("lib/smsReceipts.ts").dispatchSmsReceipt(receiptId),
   };
 }
 
@@ -276,7 +278,7 @@ for (const initial of ["CREATED", "CHECKOUT_STARTED", "PENDING"]) {
     const h = harness("CARD", initial); h.settle();
     await accepted(h, h.event("payment_intent.succeeded"));
     assert.equal(h.payment().status, "PAID");
-    assert.equal(h.state.receipts.size, 1);
+    assert.equal(h.state.receipts.size, 0);
     assert.equal(h.state.checkouts.get("checkout-test").status, "PAID");
   });
 }
@@ -307,7 +309,7 @@ for (const type of ["payment_intent.processing", "payment_intent.succeeded"]) {
     assert.deepEqual(financialState(h.state), before);
     assert.equal(h.calls.stripeReads, calls.stripeReads);
     assert.equal(h.calls.paymentWrites, calls.paymentWrites);
-    assert.equal(h.calls.receiptCreates, type.endsWith("succeeded") ? 1 : 0);
+    assert.equal(h.calls.receiptCreates, 0);
     assert.equal(h.state.audits.filter(a=>a.actorType==="STRIPE_WEBHOOK").length, 1);
   });
 }
@@ -316,13 +318,11 @@ test("distinct success events create one receipt and preserve timestamps and sen
   const h = harness(); h.settle();
   await accepted(h, h.event("payment_intent.succeeded"));
   const paidAt = h.payment().paidAt;
-  h.state.receipts.get("payment-test").status = "SENT";
   await accepted(h, h.event("checkout.session.completed"));
   await accepted(h, h.event("checkout.session.async_payment_succeeded"));
   assert.deepEqual(h.payment().paidAt, paidAt);
-  assert.equal(h.calls.receiptCreates, 1);
+  assert.equal(h.calls.receiptCreates, 0);
   assert.equal(h.calls.paymentWrites, 1);
-  assert.equal(h.state.receipts.get("payment-test").status, "SENT");
 });
 
 test("PAID cannot regress on stale processing or pre-settlement failure snapshots", async () => {
@@ -333,7 +333,7 @@ test("PAID cannot regress on stale processing or pre-settlement failure snapshot
   await accepted(h, processing); await accepted(h, failure);
   assert.equal(h.payment().status, "PAID");
   assert.equal(h.payment().returnedAt, null);
-  assert.equal(h.calls.receiptCreates, 1);
+  assert.equal(h.calls.receiptCreates, 0);
 });
 
 for (const final of ["FAILED", "RETURNED"]) {
@@ -365,7 +365,7 @@ test("a later real card settlement can recover the same declined intent; a faile
   h.live.session.status = "complete"; h.settle();
   h.live.intent.latest_charge.id = "ch_retry_success";
   await accepted(h, h.event("payment_intent.succeeded"));
-  assert.equal(h.payment().status, "PAID"); assert.equal(h.state.receipts.size, 1);
+  assert.equal(h.payment().status, "PAID"); assert.equal(h.state.receipts.size, 0);
   assert.equal(h.payment().stripeChargeId, "ch_retry_success");
   await accepted(h, { ...failure, id: "evt_late_failed_attempt" });
   assert.equal(h.payment().status, "PAID");
@@ -380,7 +380,7 @@ for (const reason of ["insufficient_funds", "incorrect_account_details", "bank_c
     await accepted(h, h.event("payment_intent.succeeded"));
     assert.equal(h.payment().status, "RETURNED");
     assert.equal(h.payment().failureCode, reason);
-    assert.ok(h.payment().returnedAt); assert.equal(h.calls.receiptCreates, 1);
+    assert.ok(h.payment().returnedAt); assert.equal(h.calls.receiptCreates, 0);
     assert.ok((await h.render()).includes("Payment returned"));
   });
 }
@@ -396,7 +396,7 @@ test("card dispute is final against stale success and reopens only on current wo
   h.live.disputes[0].status = "won"; h.live.intent.latest_charge.disputed = false;
   await accepted(h, h.event("charge.dispute.closed"));
   await accepted(h, { ...staleDispute, id: "evt_late_dispute_copy" });
-  assert.equal(h.payment().status, "PAID"); assert.equal(h.calls.receiptCreates, 1);
+  assert.equal(h.payment().status, "PAID"); assert.equal(h.calls.receiptCreates, 0);
   assert.ok((await h.render()).includes("Dispute closed won"));
 });
 
@@ -408,7 +408,7 @@ test("closed-lost card dispute preserves original settlement and durable reporti
   assert.equal(h.payment().totalChargedCents, before.totalChargedCents);
   const html = await h.render(); assert.ok(html.includes("Dispute closed lost"));
   assert.ok(!html.includes("This payment is under dispute."));
-  assert.equal(h.calls.receiptCreates, 1);
+  assert.equal(h.calls.receiptCreates, 0);
 });
 
 test("closed-won dispute first delivery records outcome without rewriting successful payment", async () => {
@@ -417,7 +417,7 @@ test("closed-won dispute first delivery records outcome without rewriting succes
   await accepted(h, h.event("charge.dispute.closed"));
   assert.equal(h.payment().status, "PAID"); assert.deepEqual(h.payment().paidAt, before.paidAt);
   assert.ok(h.payment().disputedAt); assert.ok((await h.render()).includes("Dispute closed won"));
-  assert.equal(h.calls.receiptCreates, 1);
+  assert.equal(h.calls.receiptCreates, 0);
 });
 
 test("dispute arriving before any success event is not lost or followed by a false success receipt", async () => {
@@ -455,7 +455,7 @@ test("same-second events and every ACH lifecycle delivery permutation converge t
     h.settle(); const success = h.event("payment_intent.succeeded");
     for (const index of order) await accepted(h, [processing, completed, success][index]);
     assert.equal(h.payment().status, "PAID");
-    assert.equal(h.calls.receiptCreates, 1);
+    assert.equal(h.calls.receiptCreates, 0);
   }
 });
 
@@ -467,7 +467,7 @@ test("concurrent duplicate and different events serialize on the same payment an
   assert.ok(responses.every(response => response.status === 200));
   assert.equal(h.payment().status, "PAID");
   assert.equal(h.state.audits.filter(a=>a.actorType==="STRIPE_WEBHOOK").length, 2);
-  assert.equal(h.calls.paymentWrites, 1); assert.equal(h.calls.receiptCreates, 1);
+  assert.equal(h.calls.paymentWrites, 1); assert.equal(h.calls.receiptCreates, 0);
   assert.equal(h.calls.locks, 24);
 });
 
@@ -543,7 +543,7 @@ for (const fault of ["audit","checkout","cas","stripe"]) {
     assert.equal((await h.send(evt)).status, 500);
     assert.deepEqual(financialState(h.state), before);
     h.faults[fault] = false; await accepted(h, evt);
-    assert.equal(h.payment().status, "PAID"); assert.equal(h.calls.receiptCreates, 1);
+    assert.equal(h.payment().status, "PAID"); assert.equal(h.calls.receiptCreates, 0);
     assert.equal(h.state.audits.filter(a=>a.actorType==="STRIPE_WEBHOOK").length, 1);
   });
 }
@@ -580,26 +580,8 @@ test("a paid Checkout event snapshot cannot declare a still-processing bank paym
   assert.equal(h.payment().status, "PENDING"); assert.equal(h.state.receipts.size, 0);
 });
 
-test("historical receipts without consent never dispatch under concurrent workers or replays", async () => {
-  const h = harness(); h.settle(); const evt = h.event("payment_intent.succeeded");
-  await accepted(h, evt);
-  const results = await Promise.all(Array.from({ length: 16 }, () => h.dispatch("receipt-test")));
-  assert.equal(results.filter(result => result.status === "SENT").length, 0);
-  assert.equal(results.filter(result => result.status === "SKIPPED").length, 16);
-  assert.equal(h.calls.smsSends, 0);
-  await accepted(h, evt); await accepted(h, h.event("checkout.session.completed"));
-  await h.render(); await h.render();
-  assert.equal((await h.dispatch("receipt-test")).status, "SKIPPED");
-  assert.equal(h.calls.smsSends, 0);
-  assert.equal(h.state.receipts.get("payment-test").status, "FAILED");
-});
 
-test("a queued receipt is not sent once the stored payment has been returned", async () => {
-  const h = harness(); h.settle(); await accepted(h, h.event("payment_intent.succeeded"));
-  h.dispute("insufficient_funds", "lost"); await accepted(h, h.event("charge.dispute.created"));
-  assert.equal((await h.dispatch("receipt-test")).status, "SKIPPED");
-  assert.equal(h.calls.smsSends, 0); assert.equal(h.payment().status, "RETURNED");
-});
+
 
 test("another business's valid metadata cannot override the stored PaymentIntent owner", async () => {
   const h = harness(); h.settle();
@@ -619,7 +601,7 @@ test("another business's valid metadata cannot override the stored PaymentIntent
 
 test("a stale provider observation retries without holding or regressing a payment lock", async () => {
   const h=harness();let signalRead,releaseRead;const firstRead=new Promise(resolve=>{signalRead=resolve;}),gate=new Promise(resolve=>{releaseRead=resolve;});let first=true;
-  h.hooks.intentRead=async()=>{if(!first)return;first=false;signalRead();await gate;};const old=h.event("payment_intent.processing"),processing=h.send(old);await firstRead;assert.equal(h.calls.locks,0);h.settle();await accepted(h,h.event("payment_intent.succeeded"));releaseRead();assert.equal((await processing).status,500);assert.equal(h.payment().status,"PAID");assert.equal(h.calls.paymentWrites,1);await accepted(h,old);assert.equal(h.calls.receiptCreates,1);
+  h.hooks.intentRead=async()=>{if(!first)return;first=false;signalRead();await gate;};const old=h.event("payment_intent.processing"),processing=h.send(old);await firstRead;assert.equal(h.calls.locks,0);h.settle();await accepted(h,h.event("payment_intent.succeeded"));releaseRead();assert.equal((await processing).status,500);assert.equal(h.payment().status,"PAID");assert.equal(h.calls.paymentWrites,1);await accepted(h,old);assert.equal(h.calls.receiptCreates, 0);
 });
 
 test("signed but expired delivery signatures are rejected before any record access", async () => {

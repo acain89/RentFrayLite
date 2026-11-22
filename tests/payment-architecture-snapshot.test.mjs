@@ -11,7 +11,7 @@ const architectureFields = ["pricingVersion","chargeModel","stripeConnectedAccou
 const nullArchitecture = Object.fromEntries(architectureFields.map(field => [field,null]));
 const sum = items => items.reduce((total,item) => total + item.quantity * item.price_data.unit_amount,0);
 
-for (const method of ["ACH","CARD"]) {
+for (const method of ["ACH"]) {
   test(`${method}: production session/start capture legacy facts without changing the Stripe request`, async () => {
     const h = await harness(method,"isolated"), checkout = await h.prepare();
     const destination = h.business.stripeConnection.stripeAccountId;

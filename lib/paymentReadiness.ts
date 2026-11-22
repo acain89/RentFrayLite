@@ -75,7 +75,7 @@ export function getStripeReadinessReasons(facts: StripeReadinessFacts | null, mo
     if (facts.restricted) add("STRIPE_RESTRICTED", "Stripe needs your attention before payments can resume.");
     if (!facts.platformChargesEnabled) add("STRIPE_CHARGES", "Payments are currently unavailable. Review your Stripe setup.");
     if (!facts.payoutsEnabled || !facts.transfersActive || !facts.destinationSupported) add("STRIPE_DESTINATION", "Your Stripe account cannot currently receive customer funds. Review Stripe setup.");
-    if (!facts.cardAvailable || !facts.achAvailable) add("STRIPE_PAYMENT_METHODS", "Card or bank payments are unavailable. Contact support.");
+    if (!facts.achAvailable) add("STRIPE_PAYMENT_METHODS", "ACH bank payments are unavailable. Contact support.");
   }
   return reasons;
 }

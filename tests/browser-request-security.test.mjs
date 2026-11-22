@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { authHarness } from './helpers/auth-harness.mjs';
 import { harness } from './helpers/checkout-harness.mjs';
-import twilio from 'twilio';
 
 const browserRoutes = [
   ['app/api/auth/login/route.ts','POST','public'], ['app/api/auth/logout/route.ts','POST','empty'],
@@ -12,7 +11,7 @@ const browserRoutes = [
   ...['tiers','billing','charges'].map(n=>[`app/api/setup/recurring/${n}/route.ts`,'PUT','manager']),
   ...['tiers','billing','charges'].map(n=>[`app/api/setup/recurring/${n}/route.ts`,'PATCH','manager']),
   ['app/api/setup/recurring/review/route.ts','POST','empty'], ['app/api/stripe/connect/route.ts','POST','empty'],
-  ['app/api/manager/security/route.ts','PATCH','manager'], ['app/api/manager/sms/route.ts','POST','manager'],
+  ['app/api/manager/security/route.ts','PATCH','manager'], ['app/api/manager/push/route.ts','POST','manager'],
   ['app/api/admin/businesses/[businessId]/credentials/route.ts','PATCH','admin'],
   ['app/api/admin/businesses/[businessId]/route.ts','DELETE','admin-empty'],
   ['app/api/auth/forgot-password/route.ts','POST','public'], ['app/api/auth/reset-password/route.ts','POST','public'],
@@ -84,9 +83,8 @@ test('same-origin checkout quotes and first reservations retain ownership/idempo
   const h=await harness('ACH','isolated'),q=await h.prepare();assert.equal((await h.start(q)).status,200);assert.equal((await h.start(q)).status,200);assert.equal(h.calls.creates.length,1);
 });
 test('scheduler uses bearer authentication, not browser Origin',async()=>{
-  let calls=0;const h=await authHarness('isolated',undefined,{'@/lib/smsReceipts':{processQueuedSmsReceipts:async()=>{calls++;return[];}}},{NODE_ENV:'production',CRON_SECRET:'offline-job-fixture'});
-  h.db.smsNotification={groupBy:async()=>[],aggregate:async()=>({_count:{_all:0},_min:{createdAt:null}})};
-  const route=h.load('app/api/internal/sms/process/route.ts');
+  let calls=0;const h=await authHarness('isolated',undefined,{'@/lib/pushDelivery':{processPushQueue:async()=>{calls++;return[];}}},{NODE_ENV:'production',CRON_SECRET:'offline-job-fixture'});
+  const route=h.load('app/api/internal/push/process/route.ts');
   assert.equal((await route.POST(new Request('https://example.test/api',{method:'POST'}))).status,401);
   assert.equal((await route.POST(new Request('https://example.test/api',{method:'POST',headers:{authorization:'Bearer offline-job-fixture'}}))).status,200);assert.equal(calls,1);
 });
@@ -108,19 +106,4 @@ test('hosted Stripe refresh GET retains session authorization without Origin',as
   await h.issue();await h.db.stripeConnection.create({data:{businessId:h.businesses[0].id,stripeAccountId:'acct_offline_fixture'}});
   const response=await h.load('app/api/stripe/onboard/route.ts').GET(new Request('https://example.test/api/stripe/onboard'));
   assert.equal(response.status,307);assert.equal(links.length,1);assert.equal(links[0].refresh_url,'https://example.test/api/stripe/onboard');
-});
-test('Twilio forms retain signatures without Origin and reject stalled bodies',async t=>{
-  const h=await authHarness('isolated',undefined,{twilio:{__esModule:true,default:twilio}});
-  const {verifiedTwilioForm}=h.load('lib/smsDelivery.ts');
-  const env={NEXT_PUBLIC_BASE_URL:'https://example.test',TWILIO_ACCOUNT_SID:'AC'+'1'.repeat(32),TWILIO_AUTH_TOKEN:'offline-form-fixture',TWILIO_PHONE_NUMBER:'+13125550100'};
-  const path='/api/twilio/inbound',url=env.NEXT_PUBLIC_BASE_URL+path,params={AccountSid:env.TWILIO_ACCOUNT_SID,Body:'HELP'};
-  const signature=twilio.getExpectedTwilioSignature(env.TWILIO_AUTH_TOKEN,url,params);
-  const headers={'content-type':'application/x-www-form-urlencoded','x-twilio-signature':signature};
-  const valid=await verifiedTwilioForm(new Request(url,{method:'POST',headers,body:new URLSearchParams(params)}),path,env);
-  assert.equal(valid.params.Body,'HELP');
-  await assert.rejects(()=>verifiedTwilioForm(new Request(url,{method:'POST',headers:{...headers,'x-twilio-signature':'invalid'},body:new URLSearchParams(params)}),path,env));
-  t.mock.timers.enable({apis:['setTimeout']});let cancelled=false;
-  const body=new ReadableStream({cancel(){cancelled=true;}});
-  const pending=verifiedTwilioForm(new Request(url,{method:'POST',headers,body,duplex:'half'}),path,env);
-  const rejected=assert.rejects(()=>pending,/INVALID_CALLBACK/);t.mock.timers.tick(10000);await rejected;assert.equal(cancelled,true);
 });
