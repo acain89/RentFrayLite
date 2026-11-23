@@ -81,3 +81,7 @@ test('standards-based Web Push encrypts payload locally without contacting a pro
  const webPush=await import('web-push'),{createECDH,randomBytes}=await import('node:crypto');const receiver=createECDH('prime256v1');receiver.generateKeys();const keys=webPush.generateVAPIDKeys();
  const payload=JSON.stringify({kind:'PENDING',tag:'rfl-ach-'+ 'a'.repeat(64)});const request=webPush.generateRequestDetails({endpoint:'https://fcm.googleapis.com/fcm/send/synthetic',keys:{p256dh:receiver.getPublicKey().toString('base64url'),auth:randomBytes(16).toString('base64url')}},payload,{vapidDetails:{subject:'mailto:test@example.test',publicKey:keys.publicKey,privateKey:keys.privateKey},TTL:300});assert.equal(request.method,'POST');assert.equal(request.headers['Content-Encoding'],'aes128gcm');assert.ok(!request.body.toString('utf8').includes('PENDING'));
 });
+
+test('disabling a device prevents an already queued retry from sending',async()=>{
+ const f=fixture();let attempts=0;const load=loader(f.db,async()=>{attempts++;throw{statusCode:503};});await load('lib/pushNotifications.ts').queueAchPushEvent(f.db,f.payment,'PENDING','evt_disable');await load('lib/pushDelivery.ts').processPushQueue();assert.equal(attempts,1);assert.equal(f.state.pushDelivery[0].status,'QUEUED');f.state.managerPushSubscription[0].active=false;f.state.pushDelivery[0].nextAttemptAt=new Date(0);await load('lib/pushDelivery.ts').processPushQueue();assert.equal(attempts,1);assert.equal(f.state.pushDelivery[0].status,'SKIPPED');assert.equal(f.payment.status,'PENDING');
+});

@@ -5176,12 +5176,18 @@ input:focus-visible {
   .rfl-qr-url { font-size:12pt; text-decoration:none; }
 }
 
-/* Manager-only notification controls; do not affect payment or QR controls. */
-.rfl-push-panel { max-width:1100px; margin:20px auto; padding:24px; border:1px solid #cbdacc; border-radius:18px; background:#fff; color:#173c24; }
-.rfl-push-panel h2 { font-size:20px; margin:0 0 12px; }
-.rfl-push-panel p { margin:10px 0; line-height:1.5; }
-.rfl-push-actions { display:flex; flex-wrap:wrap; gap:12px; }
-.rfl-push-actions button { width:auto; padding:12px 20px; }
-.rfl-push-actions button:focus-visible { outline:3px solid #356d46; outline-offset:4px; }
-.rfl-push-panel li { padding:12px 0; border-bottom:1px solid #d7e1d8; }
-@media print { .rfl-push-panel { display:none!important; } }
+/* Notifications use the existing Settings card and native disclosure pattern. */
+.rfl-settings-notifications { margin-top:28px; border:1px solid rgba(76,130,101,.32); border-radius:18px; background:rgba(255,255,255,.94); overflow:hidden; box-shadow:0 4px 14px rgba(40,80,58,.045); }
+.rfl-settings-notifications summary { min-height:58px; padding:18px 20px; cursor:pointer; color:var(--rfl-text); font-weight:700; }
+.rfl-settings-notifications summary:hover { background:rgba(240,249,243,.98); }
+.rfl-settings-notifications summary:focus-visible { outline:3px solid var(--rfl-primary); outline-offset:-4px; border-radius:14px; }
+.rfl-notifications-content { padding:0 20px 20px; color:var(--rfl-text-soft); line-height:1.6; }
+.rfl-notifications-content p { margin:12px 0; }
+.rfl-notifications-content h2 { margin:24px 0 8px; color:var(--rfl-text); font-size:18px; }
+.rfl-notifications-content ul { list-style:none; padding:0; margin:0; }
+.rfl-notifications-content li { padding:10px 0; border-bottom:1px solid var(--rfl-border); }
+.rfl-notifications-content time { font-size:14px; }
+.rfl-notifications-content button { min-height:48px; width:auto; max-width:100%; padding:12px 20px; }
+.rfl-notifications-content button:focus-visible { outline:3px solid var(--rfl-primary); outline-offset:3px; }
+.rfl-notifications-content a { color:var(--rfl-primary-pressed); text-decoration:underline; }
+@media print { .rfl-settings-notifications { display:none!important; } }

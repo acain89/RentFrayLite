@@ -1,3 +1,4 @@
+import ManagerPushControls from "@/components/ManagerPushControls";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireManager } from "@/lib/auth";
@@ -86,6 +87,8 @@ export default async function ManagerSettingsPage() {
             <span aria-hidden="true">&gt;</span>
           </Link>
         </section>
+
+        <ManagerPushControls />
 
         <Link
           className="rfl-settings-back"
