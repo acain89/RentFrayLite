@@ -22,6 +22,9 @@ for (const target of ["/", "/login/admin"]) for (const failure of ["http", "netw
 });
 test("manager and admin use the tested control; review copy and legacy redirect stay truthful",()=>{
  for(const file of ["app/manager/dashboard/ManagerDashboardClient.tsx","app/admin/AdminDashboardClient.tsx"]) {const source=readFileSync(file,"utf8");assert.match(source,/<LogoutButton /);assert.doesNotMatch(source,/fetch\("\/api\/auth\/logout"/);}
- const review=readFileSync("app/[accountCode]/review/ReviewPaymentClient.tsx","utf8");assert.match(review,/Optional payment-status texts require consent and service availability/);assert.doesNotMatch(review,/SMS receipt sent after payment/);
+ const review=readFileSync("app/[accountCode]/review/ReviewPaymentClient.tsx","utf8");assert.doesNotMatch(review,/Optional payment-status texts|SMS receipt sent after payment/);
+ assert.match(review.replace(/\s+/g," "),/By continuing, you authorize this one-time payment only\. No recurring or automatic payments will be created\./);
+ assert.match(review,/<li>One-time payment only<\/li>/);assert.match(review,/<li>No automatic payments<\/li>/);
+ assert.match(review,/href="\/terms"/);assert.match(review,/href="\/privacy"/);
  assert.match(readFileSync("app/checkout/page.tsx","utf8"),/redirect\("\/"\)/);
 });
