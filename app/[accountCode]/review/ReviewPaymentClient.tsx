@@ -262,7 +262,7 @@ async function beginCheckout() {
 
             <div className="rfl-review-line-item">
               <span>
-                {isCustom ? "Processing fee" : "Platform Service Fee"}
+                Platform Service Fee
               </span>
 
               <strong>

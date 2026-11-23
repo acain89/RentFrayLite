@@ -1,5 +1,9 @@
 # RentFrayLite operating runbook
 
+Current ACH-only payment compliance procedures are in [ACH operations](ach-operations.md).
+Legacy SMS dispatch and launch-baseline instructions below are historical; do not
+execute them for the current ACH/Web Push release.
+
 Owner: start with the checklist and the matching incident card. Database/provider
 actions belong to an approved operator under separate authorization; this guide
 does not activate or execute them.

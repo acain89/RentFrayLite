@@ -97,8 +97,12 @@ export default function TermsPage() {
             decisions.
           </p>
           <p>
+            New payments use ACH bank transfers. Historical card payments
+            remain subject to their applicable rules and records.
+          </p>
+          <p>
             Payment availability and timing may be affected by banks,
-            card networks, ACH rules, Stripe review, holidays, technical
+            payment-network rules, Stripe review, holidays, technical
             interruptions, disputes, returns, or other circumstances
             outside RentFrayLite&apos;s control.
           </p>
@@ -114,9 +118,16 @@ export default function TermsPage() {
             Business.
           </p>
           <p>
-            Fees may vary by payment method, transaction amount, or
-            other disclosed pricing rules. The total amount presented
-            for review before checkout controls for that transaction.
+            The Platform Service Fee is added to the Business subtotal.
+            ACH fees vary by transaction amount under the disclosed fee
+            schedule. This is a platform fee, not a statement of Stripe&apos;s
+            actual processing costs. The fee and total debit are shown
+            before payment authorization.
+          </p>
+          <p>
+            Platform service fees are ordinarily retained after processing,
+            subject to applicable law, payment-network rules, and Stripe
+            processes.
           </p>
         </section>
 
@@ -153,6 +164,21 @@ export default function TermsPage() {
 
         <section>
           <h2>9. Returns, Disputes, Chargebacks, and Negative Balances</h2>
+          <p>
+            Management handles voluntary tenant refunds directly, outside
+            RentFrayLite. RentFrayLite does not offer discretionary
+            manager-initiated refunds. An external refund does not change
+            or erase the original platform payment record and does not
+            remove a Payer&apos;s bank dispute rights.
+          </p>
+          <p>
+            Bank returns, unauthorized transactions, disputes, legally
+            required refunds, and Stripe reversals remain subject to
+            applicable law, payment-network rules, and provider processes.
+            Stripe fees and transferred funds may be reversed or recovered
+            under those processes. These Terms do not limit rights that
+            cannot lawfully be waived.
+          </p>
           <p>
             ACH payments may be returned, and historical card payments may be
             disputed or charged back. A payment initially shown as paid

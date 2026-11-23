@@ -39,7 +39,7 @@ for(const backend of postgres?["isolated","postgres"]:["isolated"])for(const met
    assert.equal(await page.getByText("Billing Cycle",{exact:true}).count(),0);assert.equal(await page.getByText("Due Date",{exact:true}).count(),0);
    await expect(page.getByRole('radio',{name:'Credit or debit card',exact:true})).toHaveCount(0);
    const latestId=new URL(page.url()).searchParams.get("session"),latest=await h.db.checkoutSession.findUnique({where:{id:latestId}});
-   assert.equal(latest.paymentMethod,method);assert.equal(latest.subtotalCents,12345);assert.equal(latest.platformFeeCents,395);await expect(page.getByText("Processing fee",{exact:true})).toBeVisible();
+   assert.equal(latest.paymentMethod,method);assert.equal(latest.subtotalCents,12345);assert.equal(latest.platformFeeCents,395);await expect(page.getByText("Platform Service Fee",{exact:true})).toBeVisible();
    const startResponse=page.waitForResponse(r=>r.url()===origin+"/api/public/checkout/start");await page.getByRole("button",{name:"Continue to Secure Payment"}).click();assert.equal((await startResponse).status(),200);await page.waitForURL("https://checkout.stripe.com/**");assert.equal(h.calls.creates.length,1);assert.equal((await h.payments()).length,1);
    const a=await h.current(latest),intent=h.intentFor(a);h.settle(a,intent);await h.webhook(a,intent);await page.goto(origin+"/payment/success?accountCode="+h.business.accountCode+"&session_id="+a.session.id);
    await expect(page.getByRole("heading",{name:"Payment successful"})).toBeVisible();await expect(page.getByText("Custom Payment",{exact:true})).toBeVisible();
