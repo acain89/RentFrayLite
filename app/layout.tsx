@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import SiteFooter from "@/components/SiteFooter";
 import { RFL_PUBLIC_ORIGIN } from "@/lib/publicMetadata";
@@ -31,6 +31,8 @@ export const metadata: Metadata = {
     follow: true,
   },
 };
+
+export const viewport: Viewport = { themeColor: "#173c24" };
 
 export default function RootLayout({
   children,

@@ -5191,3 +5191,15 @@ input:focus-visible {
 .rfl-notifications-content button:focus-visible { outline:3px solid var(--rfl-primary); outline-offset:3px; }
 .rfl-notifications-content a { color:var(--rfl-primary-pressed); text-decoration:underline; }
 @media print { .rfl-settings-notifications { display:none!important; } }
+
+.pwa-install-control { display: inline-flex; align-items: center; }
+.pwa-install-dialog { position: fixed; inset: 0; margin: auto; width: min(92vw, 32rem); max-height: 85dvh; overflow: auto; border: 1px solid var(--rfl-border); border-radius: 1rem; padding: 1.5rem; color: var(--rfl-text); background: var(--rfl-background); }
+.pwa-install-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+.pwa-install-dialog h2 { font-size: 1.6rem; }
+.pwa-install-dialog button { min-height: 48px; max-width: 100%; white-space: normal; }
+.pwa-install-dialog li + li { margin-top: .5rem; }
+.pwa-offline { flex-basis: 100%; margin: 0; padding: .5rem; background: var(--rfl-surface-soft); color: var(--rfl-text); }
+
+.pwa-install-control > button, .pwa-install-dialog button { min-height: 44px; padding: .6rem 1rem; border: 1px solid currentColor; border-radius: .5rem; color: inherit; background: transparent; cursor: pointer; font: inherit; }
+.pwa-install-control button:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+.pwa-install-bar { display: flex; flex-wrap: wrap; justify-content: center; padding: 1rem; }

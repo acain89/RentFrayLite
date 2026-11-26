@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { InstallApp } from "./InstallApp";
 
 export default function SiteFooter() {
   return (
@@ -14,6 +15,7 @@ export default function SiteFooter() {
           <Link href="/security">Security</Link>
           <Link href="/support">Support</Link>
           <Link href="/contact">Contact</Link>
+          <InstallApp />
         </nav>
       </div>
     </footer>

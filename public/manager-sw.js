@@ -1,6 +1,5 @@
-/* No fetch handler or cache: private pages and payment data never go offline. */
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", event => event.waitUntil(self.clients.claim()));
+/* No fetch handler or cache: private pages and payment data never go offline.
+   Default update lifecycle: no forced activation, claiming or reload. */
 self.addEventListener("push", event => {
   let payload; try { payload = event.data.json(); } catch { return; }
   if (!payload || !["PENDING", "PAID"].includes(payload.kind)) return;
