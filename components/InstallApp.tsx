@@ -1,8 +1,12 @@
 "use client";
+import { usePathname } from "next/navigation";
+import { isInstallationRoute } from "@/lib/pwaVisibility";
 import { useEffect, useId, useRef, useState } from "react";
 import { ensureAppWorker, InstallPrompt, isAppleMobile, isInstalled, type InstallPromptEvent } from "@/lib/pwa";
 
 export function InstallApp() {
+    const pathname = usePathname();
+    const installAllowed = isInstallationRoute(pathname);
     const [available, setAvailable] = useState(false), [installed, setInstalled] = useState(false);
     const [ready, setReady] = useState(false), [apple, setApple] = useState(false), [supported, setSupported] = useState(false);
     const [needsRefresh, setNeedsRefresh] = useState(false);
@@ -45,8 +49,9 @@ export function InstallApp() {
             display.removeEventListener("change", sync);
         };
     }, []);
+    useEffect(() => { dialog.current?.close(); }, [pathname]);
     const install = async () => {
-        if (requesting.current || !prompt.current.available) return;
+        if (!installAllowed || requesting.current || !prompt.current.available) return;
         requesting.current = true; setBusy(true); setAvailable(false);
         try {
             const result = await prompt.current.request();
@@ -58,7 +63,7 @@ export function InstallApp() {
     return <>
         {offline && <p className="pwa-offline" role="status">You are offline. Displayed information may be out of date. Reconnect before submitting changes or making payments.</p>}
         {needsRefresh && <p className="pwa-offline" role="status">Connection restored. Refresh to load current information before submitting changes or payments. <button type="button" onClick={() => location.reload()}>Reload current information</button></p>}
-        {!installed && <div className="pwa-install-control">
+        {!installed && installAllowed && <div className="pwa-install-control">
             <button ref={trigger} type="button" aria-haspopup="dialog" onClick={() => dialog.current?.showModal()}>Install App</button>
             <dialog ref={dialog} className="pwa-install-dialog" aria-labelledby={title} onClose={() => trigger.current?.focus()} onKeyDown={event => {
                 if (event.key !== "Tab") return;

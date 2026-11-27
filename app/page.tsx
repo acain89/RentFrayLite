@@ -97,13 +97,6 @@ export default function HomePage() {
             Manager Login
           </button>
 
-          <button
-            type="button"
-            onClick={() => router.push("/download")}
-            className="rfl-download-link"
-          >
-            Install on your phone
-          </button>
         </div>
       </section>
 

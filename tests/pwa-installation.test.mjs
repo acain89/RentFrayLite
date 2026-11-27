@@ -93,3 +93,29 @@ test("existing push handlers retain fixed private messages, deduplication and se
     let pending; w.listeners.notificationclick({ notification: { close() {} }, waitUntil: value => { pending = value; } }); await pending;
     assert.ok(w.opened[0].endsWith(jf ? "/dashboard" : "/manager/dashboard"));
 });
+
+const visibility = moduleAt("lib/pwaVisibility.ts");
+const installationRoutes = rf ? ["/", "/manager/dashboard", "/tenant/dashboard", "/admin", "/maintenance/dashboard", "/r/portal"] : jf ? ["/", "/dashboard", "/admin"] : ["/", "/manager/dashboard", "/admin"];
+test("installation invitations use only the explicit approved route allowlist", () => {
+  assert.equal(JSON.stringify(visibility.INSTALLATION_ROUTES), JSON.stringify(installationRoutes));
+  for (const route of installationRoutes) assert.equal(visibility.isInstallationRoute(route), true, route);
+});
+for (const route of [null, undefined, "", "/login", "/login/manager", "/setup", "/register", "/recover", "/reset-password", "/property-code", "/AB-1234", "/AB-1234/review", "/checkout", "/payment/success", "/confirmation", "/request/business/offering", "/sites/business", "/find", "/directory", "/terms", "/privacy", "/admin/requests", "/administrator", "/admin/", "/manager/dashboard/history", "/dashboard/", "/%61dmin", "//admin"]) test("installation route fails closed: " + String(route), () => {
+  assert.equal(visibility.isInstallationRoute(route), false);
+});
+test("route suppression leaves connectivity warnings outside installation controls", () => {
+  const source = readFileSync("components/InstallApp.tsx", "utf8");
+  assert.ok(source.includes("!installed && installAllowed"));
+  assert.ok(source.indexOf("{offline &&") < source.indexOf("{!installed && installAllowed"));
+  assert.ok(source.includes("dialog.current?.close(); }, [pathname"));
+  assert.ok(source.includes("if (!installAllowed || requesting.current"));
+});
+if (rf) test("payment suppression is scoped, concurrent and idempotently released", () => {
+  const state = moduleAt("lib/pwaPaymentInteraction.ts"); let changes = 0;
+  const unsubscribe = state.subscribePaymentInteraction(() => changes++);
+  const first = state.beginPaymentInteraction(), second = state.beginPaymentInteraction();
+  assert.equal(state.isPaymentInteractionActive(), true); first(); first();
+  assert.equal(state.isPaymentInteractionActive(), true); assert.equal(changes, 3);
+  second(); assert.equal(state.isPaymentInteractionActive(), false); assert.equal(changes, 4);
+  unsubscribe(); const third = state.beginPaymentInteraction(); third(); assert.equal(changes, 4);
+});

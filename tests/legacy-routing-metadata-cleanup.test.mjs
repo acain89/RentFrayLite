@@ -78,7 +78,7 @@ for(const backend of ['isolated',...(postgres?['postgres']:[])]) {
 }
 
 test('footer renders the intended copyright as valid UTF-8',()=>{
-  const h=managementBillingHarness();h.mocks.react=React;const Footer=h.load('components/SiteFooter.tsx').default;
+  const h=managementBillingHarness();h.mocks.react=React;h.mocks['next/navigation'].usePathname=()=>'/terms';const Footer=h.load('components/SiteFooter.tsx').default;
   const html=renderToStaticMarkup(React.createElement(Footer));assert.ok(html.includes('©'));assert.ok(html.includes('RentFrayLite'));assert.doesNotMatch(html,/[\u00c2\u00c3\ufffd]/);
 });
 test('small-property tiers render the intended middle dot without changing amounts',()=>{

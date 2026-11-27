@@ -27,6 +27,24 @@ try {
     const page = await context.newPage(); page.setDefaultTimeout(45000); page.on("pageerror", e => results.consoleErrors.push(e.message));
     await page.goto(origin + "/"); await page.getByRole("button", { name: "Install App", exact: true }).waitFor();
     assert.equal(await page.getByRole("dialog").count(), 0); // no automatic dialog
+    if (!jf && !rf) {
+        assert.equal(await page.getByRole("button", { name: "Install on your phone", exact: true }).count(), 0);
+        const legacy = await context.request.get(origin + "/download", { maxRedirects: 0 });
+        assert.equal(legacy.status(), 307); assert.equal(legacy.headers().location, "/");
+    }
+    const prohibited = await context.newPage();
+    prohibited.on("pageerror", error => results.consoleErrors.push(error.message));
+    for (const route of ["/terms", jf ? "/login" : "/login/manager"]) {
+        const response = await prohibited.goto(origin + route); assert.equal(response.status(), 200, route); await prohibited.waitForTimeout(500);
+        assert.equal(await prohibited.getByRole("button", { name: "Install App", exact: true }).count(), 0, route);
+    }
+    if (rf) {
+        const guide = await prohibited.goto(origin + "/install"); assert.equal(guide.status(), 200);
+        await prohibited.getByRole("heading", { name: "Get RentFray on your phone.", exact: true }).waitFor();
+        assert.equal(await prohibited.getByRole("button", { name: "Install App", exact: true }).count(), 0);
+    }
+    await prohibited.close();
+    results.checks.push("explicit allowed landing route; login/legal exclusion; legacy route correction");
     const manifest = await (await context.request.get(origin + "/manifest.webmanifest")).json();
     assert.equal(manifest.display, "standalone"); assert.equal(manifest.scope, "/");
     assert.equal((await context.request.get(origin + worker)).status(), 200);
@@ -77,6 +95,16 @@ try {
     results.checks.push("simulated iOS instructions; no physical installation claimed");
     const standalone = await browser.newContext(); await standalone.addInitScript(() => { Object.defineProperty(navigator, "standalone", { value: true }); });
     await standalone.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort()); const installed = await standalone.newPage(); await installed.goto(origin + "/"); await installed.waitForTimeout(500); assert.equal(await installed.getByRole("button", { name: "Install App", exact: true }).count(), 0);
+    if (rf) {
+        await installed.goto(origin + "/install");
+        await installed.getByText("RentFray is already installed. No installation is needed.", { exact: true }).waitFor();
+        assert.equal(await installed.getByRole("heading", { name: "Get RentFray on your phone.", exact: true }).count(), 0);
+    }
+    if (!jf && !rf) {
+        await installed.goto(origin + "/download"); assert.equal(new URL(installed.url()).pathname, "/");
+        assert.equal(await installed.getByRole("button", { name: "Install App", exact: true }).count(), 0);
+        assert.equal(await installed.getByRole("button", { name: "Install on your phone", exact: true }).count(), 0);
+    }
     results.checks.push("simulated standalone hiding");
     const unsupported = await browser.newContext(); await unsupported.addInitScript(() => Object.defineProperty(window, "isSecureContext", { value: false }));
     await unsupported.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
