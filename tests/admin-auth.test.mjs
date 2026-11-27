@@ -1,3 +1,4 @@
+import { openVerifiedTestDatabase } from "./helpers/checkout-harness.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -56,33 +57,44 @@ test('B4 security events/public bodies never contain credentials, hashes or sess
 test('B4 database reservation failure fails closed without bcrypt or session issuance',async()=>{
  const h=await authHarness(),count=spy(h);h.db.failures.add('auditLog.create');assert.equal((await login(h)).status,503);assert.equal(count(),0);assert.equal((await h.db.session.findMany()).length,0);
 });
-test('B4 mocked seed rejects malformed configuration before writes and preserves six-digit strings',async()=>{
+test('B4 mocked disposable seed rejects malformed credentials before opening a database and preserves six-digit strings',async()=>{
  const h=await authHarness();for(const value of [undefined,'12345','1234567','12a456',' 123456','123456 ',123456,'000123',secret]){
-  const calls=[],logs=[];let done;const finished=new Promise(r=>done=r);const db={adminAccess:{deleteMany:()=>{calls.push('delete');return {};},create:args=>{calls.push(args);return {};}},$transaction:async()=>{},$disconnect:async()=>done()};const mod={exports:{}};
+  const calls=[],logs=[];let opens=0,proofs=0;const db={adminAccess:{deleteMany:args=>{assert.deepEqual(args.where,{id:'rfl-fixture-admin-'+'a'.repeat(32)});calls.push(args);},create:args=>{calls.push(args);}},$transaction:fn=>fn(db),$disconnect:async()=>{}};const mod={exports:{}};
   vm.runInThisContext('(function(require,module,exports,process,console){'+ts.transpileModule(readFileSync('prisma/seed.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2022}}).outputText+'})')(
-   name=>name==='@prisma/client'?{PrismaClient:class{constructor(){return db;}}}:name==='bcryptjs'?{__esModule:true,default:bcrypt}:h.load('lib/adminCredential.ts'),mod,mod.exports,{env:{SEED_ADMIN_CODE:value},exit:()=>{}},{log:(...a)=>logs.push(a),error:(...a)=>logs.push(a.map(v=>v instanceof Error?v.message:v))});
-  await finished;if(value==='000123'||value===secret){assert.equal(calls.length,2);assert.equal(await bcrypt.compare(value,calls[1].data.codeHash),true);}else assert.equal(calls.length,0);
+   name=>name==='bcryptjs'?{__esModule:true,default:bcrypt}:name==='../lib/disposableDatabase'?{openDisposableDatabase:async()=>{opens++;return db;},verifyDisposableIdentity:async(_db,_config,scope)=>{assert.equal(scope,'seed-admin');proofs++;}}:h.load('lib/adminCredential.ts'),mod,mod.exports,{env:{},argv:[]},{log:(...args)=>logs.push(args),error:(...args)=>logs.push(args)});
+  if(value==='000123'||value===secret){const outcome=await mod.exports.seedDisposableAdministrator({nonce:'a'.repeat(32)},value,true);assert.equal(outcome.applied,true);assert.equal(calls.length,2);assert.equal(await bcrypt.compare(value,calls[1].data.codeHash),true);assert.equal(opens,1);assert.equal(proofs,1);}else {await assert.rejects(()=>mod.exports.seedDisposableAdministrator({nonce:'a'.repeat(32)},value,true));assert.equal(opens,0);assert.equal(calls.length,0);}
   const output=JSON.stringify(logs);if(typeof value==='string'&&value)assert.ok(!output.includes(value));
  }
 });
+
 if(postgres)test('B4 PostgreSQL: concurrent independent instances, persistent audit budget, recovery and real session issuance',async()=>{
- const first=await authHarness('postgres'),second=await authHarness('postgres');const original=postgres.adminAccess.findMany;
+ const firstDb=await openVerifiedTestDatabase(),secondDb=await openVerifiedTestDatabase();
+ const first=await authHarness('postgres',firstDb),second=await authHarness('postgres',secondDb);
+ const originals=[firstDb,secondDb].map(db=>db.adminAccess.findMany);
+ let restartedDb;
  // This shared disposable cluster contains many unrelated test principals. Limit
  // credential candidates to this scenario's fixtures; throttle SQL remains real/global.
  const ids=[...first.admins,...second.admins].map(a=>a.id);
- postgres.adminAccess.findMany=args=>original.call(postgres.adminAccess,{...args,where:{...args.where,id:{in:ids}}});
+ // One active owner is the scenario; unrelated fixture principals remain intact.
+ await firstDb.adminAccess.updateMany({where:{id:{in:ids.filter(id=>id!==first.admins[0].id)}},data:{isActive:false}});
+ [firstDb,secondDb].forEach((db,index)=>{db.adminAccess.findMany=args=>originals[index].call(db.adminAccess,{...args,where:{...args.where,id:{in:ids}}});});
  const old=await events(first);
  // Age only B4 test security events in this explicitly verified disposable DB.
  for(const row of old){assert.equal(row.actorType,'SECURITY');assert.equal(row.targetType,'ADMIN_AUTH');}
  if(old.length)await postgres.auditLog.updateMany({where:{id:{in:old.map(r=>r.id)}},data:{createdAt:new Date(Date.now()-300001)}});
  try{
   const responses=await Promise.all(Array.from({length:24},(_,n)=>login(n%2?first:second,'123456',{'x-forwarded-for':`198.51.100.${n}`})));
-  assert.equal(responses.filter(r=>r.status===401).length,10);assert.equal(responses.filter(r=>r.status===429).length,14);const rows=(await events(first)).filter(r=>!old.some(o=>o.id===r.id));assert.equal(rows.length,10);
-  const restarted=await authHarness('postgres');assert.equal((await login(restarted)).status,429);
+  assert.equal(responses.filter(r=>r.status===401).length,10);assert.equal(responses.filter(r=>r.status===429).length,14,JSON.stringify(responses.map(r=>r.status)));const rows=(await events(first)).filter(r=>!old.some(o=>o.id===r.id));assert.equal(rows.length,10);
+  restartedDb=await openVerifiedTestDatabase();const restarted=await authHarness('postgres',restartedDb);assert.equal((await login(restarted)).status,429);
   await postgres.auditLog.updateMany({where:{id:{in:rows.map(r=>r.id)}},data:{createdAt:new Date(Date.now()-300001)}});
   assert.equal((await login(first)).status,200);const session=await first.session.getCurrentSession();assert.equal(session.type,'ADMIN');assert.ok(ids.includes(session.adminAccessId));
   await postgres.adminAccess.update({where:{id:session.adminAccessId},data:{isActive:false}});assert.equal(await first.session.getCurrentSession(),null);
- }finally{postgres.adminAccess.findMany=original;}
+ }finally{
+  const owned=(await events(first)).filter(row=>!old.some(previous=>previous.id===row.id));
+  if(owned.length)await firstDb.auditLog.updateMany({where:{id:{in:owned.map(row=>row.id)},actorType:"SECURITY",targetType:"ADMIN_AUTH"},data:{createdAt:new Date(Date.now()-300001)}});
+  [firstDb,secondDb].forEach((db,index)=>{db.adminAccess.findMany=originals[index];});
+  await Promise.all([firstDb.$disconnect(),secondDb.$disconnect(),restartedDb?.$disconnect()]);
+ }
 });
 
 

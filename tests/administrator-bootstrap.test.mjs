@@ -1,0 +1,14 @@
+﻿import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { runInThisContext } from "node:vm";
+import { tsImport } from "tsx/esm/api";
+import ts from "typescript";
+const require=createRequire(import.meta.url),holder={exports:{}};
+const dependencies={bcryptjs:require("bcryptjs"),"./adminCredential":await tsImport("../lib/adminCredential.ts",import.meta.url)};
+runInThisContext('(function(require,module,exports){'+ts.transpileModule(readFileSync("lib/administratorBootstrap.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2022}}).outputText+'})')(name=>{assert.ok(Object.hasOwn(dependencies,name));return dependencies[name];},holder,holder.exports);
+const {bootstrapFirstAdministrator,validateBootstrapTarget,RFL_BOOTSTRAP_SCHEMA_CHECKSUMS}=holder.exports;
+const target={database:"disposable",databaseOid:"12345",owner:"fixture_owner",role:"fixture_app",administratorId:"rfl-bootstrap-admin-"+"a".repeat(32)};
+for(const patch of [{databaseOid:""},{administratorId:"arbitrary-admin"},{owner:""},{unexpected:"override"}])test("first administrator bootstrap rejects malformed explicit scope "+JSON.stringify(patch),()=>assert.throws(()=>validateBootstrapTarget({...target,...patch})));
+test("first administrator bootstrap is non-destructive, dry-run and preserves existing access",async()=>{const rows=[];let query=0;const tx={$queryRawUnsafe:async sql=>{query++;return sql.includes("pg_database")?[{database:target.database,databaseoid:target.databaseOid,owner:target.owner,username:target.role}]:sql.includes("_prisma_migrations")?[{checksum:RFL_BOOTSTRAP_SCHEMA_CHECKSUMS[0],finished_at:new Date(),rolled_back_at:null}]:[];},adminAccess:{count:async()=>rows.length,create:async({data})=>{rows.push(data);return data;}}};const db={$transaction:fn=>fn(tx)};assert.equal((await bootstrapFirstAdministrator(db,target,"000123")).applied,false);assert.equal(rows.length,0);assert.equal((await bootstrapFirstAdministrator(db,target,"000123",true)).applied,true);assert.equal(await require("bcryptjs").compare("000123",rows[0].codeHash),true);const before=structuredClone(rows);assert.equal((await bootstrapFirstAdministrator(db,target,"482731",true)).eligible,false);assert.deepEqual(rows,before);await assert.rejects(()=>bootstrapFirstAdministrator(db,{...target,databaseOid:"99999"},"000123",true),/IDENTITY_REJECTED/);assert.deepEqual(rows,before);const prior=query;await assert.rejects(()=>bootstrapFirstAdministrator(db,target,"invalid",true));assert.equal(query,prior);});

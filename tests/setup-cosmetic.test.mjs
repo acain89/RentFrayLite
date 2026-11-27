@@ -1,3 +1,6 @@
+import os from "node:os";
+import path from "node:path";
+import { applyReviewedClientDeltas } from "./helpers/reviewed-framework-compatibility.mjs";
 import {assertUnchangedAchCore,assertAdditivePushSchema} from "./helpers/ach-cleanup-boundary.mjs";
 import assert from 'node:assert/strict';
 import test,{before,after} from 'node:test';
@@ -7,6 +10,8 @@ import {build} from 'esbuild';
 import {chromium,expect} from '@playwright/test';
 import postcss from 'postcss';
 import tailwind from '@tailwindcss/postcss';
+const screenshotRoot=process.env.RFL_SCREENSHOT_DIR??path.join(os.tmpdir(),"rfl-ui-"+process.pid+"-"+Date.now());
+
 
 const benefits=['Stripe securely handles your banking information.','RentFrayLite never sees or stores your bank login credentials.','Customer payments are processed securely through Stripe.','Receive payouts directly to your connected bank account.'];
 const tip="If you're a sole proprietor, selecting Individual / Sole Proprietorship during Stripe setup is usually the simplest option.";
@@ -32,7 +37,7 @@ test('setup retains handlers, navigation, recovery and tier editor through ACH c
  const bank='app/setup/stripe/BankSetupClient.tsx',cut=s=>s.slice(0,s.indexOf('  return (\n    <main'));
  assert.equal(cut(current(bank)),cut(base(bank)));
  const actions=s=>s.slice(s.indexOf('        <div className="rfl-bank-actions">'),s.indexOf('        </div>',s.indexOf('        <div className="rfl-bank-actions">'))+14);assert.equal(actions(current(bank)),actions(base(bank)));
- const tiers='app/setup/recurring/tiers/RecurringTiersClient.tsx',link='<a href={"/setup/recurring/tiers?incremental=1"+(settingsMode?"&mode=settings":"")}>Edit one tier at a time</a>\n';assert.equal(current(tiers),base(tiers).replace(link,''));
+ const tiers='app/setup/recurring/tiers/RecurringTiersClient.tsx',link='<a href={"/setup/recurring/tiers?incremental=1"+(settingsMode?"&mode=settings":"")}>Edit one tier at a time</a>\n';assert.equal(current(tiers),applyReviewedClientDeltas(tiers,base(tiers).replace(link,'')));
  for(const n of ['app/api/stripe/connect/route.ts','app/api/setup/recurring/review/route.ts','lib/stripeProvisioningAttempt.ts','lib/stripeConnectRecovery.ts','scripts/prepare-stripe-connect-recovery.ts','app/setup/stripe/page.tsx'])assert.equal(current(n),base(n),n);
 });
 for(const width of [375,1280]){
@@ -48,7 +53,7 @@ for(const width of [375,1280]){
    assert.ok(await v.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
    const rows=await list.getByRole('listitem').all();for(const row of rows){const box=await row.boundingBox();assert.ok(box.width>200&&box.height<90);}
    const contrast=await list.locator('p').first().evaluate(el=>{const rgb=s=>s.match(/[\d.]+/g).slice(0,3).map(Number),lum=rgb=>rgb.map(c=>c/255).map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4).reduce((s,c,i)=>s+c*[.2126,.7152,.0722][i],0);const foreground=lum(rgb(getComputedStyle(el).color));return 1.05/(foreground+.05);});assert.ok(contrast>=4.5,'Text contrast against the white card');
-   await v.page.screenshot({path:`../evidence/stripe-${width}.png`,fullPage:true});assert.deepEqual(v.external,[]);
+   await v.page.screenshot({path:path.join(screenshotRoot,`stripe-${width}.png`),fullPage:true});assert.deepEqual(v.external,[]);
   }finally{await v.page.close();}
  });
  test(`Connect loading, rejected response and successful retry retain the empty POST at ${width}px`,async()=>{
@@ -83,7 +88,7 @@ for(const width of [375,1280]){
    await expect(v.page.getByRole('heading',{level:1})).toHaveText('Connect your bank');await expect(v.page.getByRole('complementary',{name:'Payment readiness',exact:true})).toHaveCount(0);
    for(const line of ['Finish payment setup',...routineReasons.map(r=>r.message)])await expect(v.page.getByText(line,{exact:true})).toHaveCount(0);
    await expect(v.page.getByRole('list',{name:'Stripe banking benefits'}).getByRole('listitem').locator('p')).toHaveText(benefits);await expect(v.page.getByRole('button',{name:'Continue to Account Code',exact:true})).toHaveCount(0);
-   await v.page.screenshot({path:`../evidence/stripe-clean-${width}.png`,fullPage:true});assert.ok(await v.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+   await v.page.screenshot({path:path.join(screenshotRoot,`stripe-clean-${width}.png`),fullPage:true});assert.ok(await v.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
    await v.page.getByRole('button',{name:'Connect Bank Account',exact:true}).click();await expect(v.page.getByRole('button',{name:'Opening Stripe...'})).toBeDisabled();await v.respond({status:400,body:{error:'Synthetic provider rejection'}});await expect(v.page.getByRole('alert')).toHaveText('Synthetic provider rejection');await expect(v.page.getByRole('button',{name:'Connect Bank Account'})).toBeEnabled();
    await v.page.getByRole('button',{name:'Connect Bank Account'}).click();await expect(v.page.getByRole('button',{name:'Opening Stripe...'})).toBeDisabled();await v.respond({status:200,body:{redirectTo:'https://example.test/mock-onboarding'}});await expect(v.page).toHaveURL('https://example.test/mock-onboarding');assert.ok(v.requests.every(r=>r.method==='POST'&&r.body===null));assert.deepEqual(v.external,[]);
   }finally{await v.page.close();}
@@ -109,7 +114,7 @@ for(const width of [375,1280]){
   ];
   for(const [code,message,route] of warnings){const v=await view(width,{readiness:routineReadiness({reasons:[...routineReasons,{code,message,route}]})});try{
    const notice=v.page.getByRole('complementary',{name:'Payment readiness',exact:true});await expect(notice).toBeVisible();await expect(notice.getByRole('link',{name:message,exact:true})).toHaveAttribute('href',route);for(const r of routineReasons)await expect(notice.getByRole('link',{name:r.message,exact:true})).toBeVisible();assert.deepEqual(v.external,[]);
-   if(code==='STRIPE_RESTRICTED')await v.page.screenshot({path:`../evidence/stripe-warning-${width}.png`,fullPage:true});
+   if(code==='STRIPE_RESTRICTED')await v.page.screenshot({path:path.join(screenshotRoot,`stripe-warning-${width}.png`),fullPage:true});
   }finally{await v.page.close();}}
  });
  test(`existing accounts, returned onboarding, initial errors and nonroutine states preserve notices at ${width}px`,async()=>{

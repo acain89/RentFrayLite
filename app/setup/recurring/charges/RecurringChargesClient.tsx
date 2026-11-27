@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition,  useEffect, useMemo, useRef, useState } from "react";
 import {
   useRouter,
   useSearchParams,
@@ -496,7 +496,7 @@ const saveChain = useRef<Promise<void>>(Promise.resolve());
   );
 
     if (validationError) {
-      setSaveStatus("idle");
+      startTransition(() => setSaveStatus("idle"));
       return;
     }
 

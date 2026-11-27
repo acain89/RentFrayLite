@@ -1,3 +1,4 @@
+import {historicalSmsFixture} from '../helpers/historical-sms-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -22,12 +23,13 @@ async function smsFixture(){
  const f=await webhookFixture('postgres','DIRECT','CARD');
  f.settle();assert.equal((await f.send(f.event())).status,200);
  f.mocks.twilio={default:()=>{throw Error('Provider construction forbidden');}};
- const at=new Date(),version=f.load('lib/smsConsent.ts').SMS_CONSENT_VERSION;
+ const historical=historicalSmsFixture(f);
+ const at=new Date(),version=historical.load('lib/smsConsent.ts').SMS_CONSENT_VERSION;
  const phone='+1312555'+String(++phoneSequence);
  await f.db.payment.update({where:{id:f.payment.id},data:{payerPhone:phone}});
  await f.db.checkoutSession.update({where:{id:f.checkout.id},data:{phone,smsConsentAt:at,smsConsentVersion:version}});
  await f.db.business.update({where:{id:f.business.id},data:{contactPhone:phone,paymentSmsEnabled:true,smsConsentPhone:phone,smsConsentAt:at,smsConsentVersion:version}});
- const delivery=f.load('lib/smsDelivery.ts'),phoneHash=f.load('lib/smsNotifications.ts').smsPhoneHash(phone);
+ const delivery=historical.load('lib/smsDelivery.ts'),phoneHash=historical.load('lib/smsNotifications.ts').smsPhoneHash(phone);
  // Intended-due synthetic messages use a fixed past time; explicit overrides win.
  const create=(recipientType='MANAGEMENT',patch={})=>f.db.smsNotification.create({data:{nextAttemptAt:new Date(0),paymentId:f.payment.id,recipientType,eventType:'SUCCESSFUL',paymentState:'PAID',transitionKey:randomUUID(),phone,phoneHash,body:'Synthetic verification',consentVersion:version,consentAt:at,callbackToken:randomUUID(),...patch}});
  let sends=0;
@@ -38,7 +40,7 @@ function refundData(p,amount=100,status='succeeded'){
  return {paymentId:p.id,stripeRefundId:'re_'+randomUUID().replaceAll('-',''),stripePlatformAccountId:p.stripePlatformAccountId,stripeAccountId:p.stripeConnectedAccountId,stripeMode:'test',chargeModel:p.chargeModel,pricingVersion:p.pricingVersion,stripeChargeId:p.stripeChargeId,stripePaymentIntentId:p.stripePaymentIntentId,amountCents:amount,currency:'usd',status,stripeCreatedAt:new Date()};
 }
 test('PG parallel Checkout reservations preserve one original payment/session',async()=>{
- const f=await harness('CARD','postgres'),q=await f.prepare();
+ const f=await harness('ACH','postgres'),q=await f.prepare();
  const responses=await Promise.all(Array.from({length:6},()=>f.start(q)));
  assert.ok(responses.every(r=>[200,409].includes(r.status)));
  const payments=await f.payments();assert.equal(payments.length,1);

@@ -1,0 +1,9 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { verificationDestination, assertVerificationDestination, assertVerificationResolution, verificationArguments } from "../scripts/verification-network-guard.mjs";
+for (const args of [[{host:"external.invalid",port:443}], [[{host:"external.invalid",port:443},null]], [[[443,"external.invalid"]]], ["443","external.invalid"], [{host:"127.0.0.1",port:5432}], [[{host:"127.0.0.1",port:5433},null]], [{host:"localhost",port:9}], [{host:"localhost",port:10000,lookup(){}}], [{}], ["\\\\remote-server\\pipe\\probe"]]) test("verification guard rejects destination " + JSON.stringify(args),()=>assert.throws(()=>assertVerificationDestination(verificationDestination(args)),/Verification blocked/));
+for (const args of [[443,"127.0.0.1"], [[{host:"::1",port:10000},null]], [{host:"localhost",port:10000}], ["\\\\.\\pipe\\isolated-esbuild"]]) test("verification guard preserves loopback/IPC " + JSON.stringify(args),()=>assert.doesNotThrow(()=>assertVerificationDestination(verificationDestination(args))));
+for (const address of ["192.0.2.1",[{address:"127.0.0.1"},{address:"192.0.2.1"}],[],"::ffff:192.0.2.1"]) test("verification guard rejects non-loopback DNS result " + JSON.stringify(address),()=>assert.throws(()=>assertVerificationResolution(address),/non-loopback/));
+test("verification guard permits only inspected loopback resolution",()=>{assertVerificationResolution("127.0.0.1");assertVerificationResolution([{address:"::1"}]);});
+
+test("verification guard freezes inspected socket options and rejects cyclic nesting",()=>{let reads=0;const options={port:10000,get host(){return ++reads===1?"127.0.0.1":"192.0.2.1";}};const checked=verificationArguments([options]);assert.equal(checked[0].host,"127.0.0.1");assert.equal(reads,1);const cycle=[];cycle.push(cycle);assert.throws(()=>verificationArguments(cycle),/nesting/);});

@@ -5,7 +5,8 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import os from "node:os";
+import { tsImport } from "tsx/esm/api";
+const { loadDisposableConfig, openDisposableDatabase } = await tsImport("../../lib/disposableDatabase.ts", import.meta.url);
 import { after, before } from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
@@ -24,16 +25,8 @@ const compiled = new Map();
 const postgresConfigPath = process.argv.find(arg => arg.startsWith("--rfl-test-db-config="))?.slice("--rfl-test-db-config=".length);
 let postgres;
 if (postgresConfigPath) {
-  const config = JSON.parse(readFileSync(postgresConfigPath, "utf8"));
-  assert.equal(config.isolationVerified, true);
-  assert.equal(config.host, "127.0.0.1");
-  assert.match(config.role, /^rfl_s5_[a-f0-9]{12}$/);
-  assert.equal(config.database, config.role);
-  assert.ok(Number.isInteger(config.port) && config.port > 1024 && config.port < 65536);
-  assert.match(path.basename(config.data), /^rfl-b1-pg-[a-f0-9]{32}$/);
-  assert.equal(path.resolve(config.data), path.resolve(os.tmpdir(), path.basename(config.data)));
-  const postgresUrl = `postgresql://${encodeURIComponent(config.role)}:${encodeURIComponent(config.password)}@127.0.0.1:${config.port}/${config.database}`;
-  postgres = new enums.PrismaClient({ datasources: { db: { url: postgresUrl } } });
+  const config = loadDisposableConfig(process.argv);
+  postgres = await openDisposableDatabase(config);
   before(async () => {
     const [identity] = await postgres.$queryRawUnsafe("SELECT current_user AS username, current_database() AS database, current_setting('data_directory') AS directory, host(inet_server_addr()) AS address, inet_server_port() AS port");
     assert.equal(identity.username, config.role);
@@ -374,4 +367,5 @@ async function harness(method, backend, clock) {
 }
 
 
+export async function openVerifiedTestDatabase() { return openDisposableDatabase(loadDisposableConfig(process.argv)); }
 export { harness, postgres };

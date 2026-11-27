@@ -1,4 +1,5 @@
 "use client";
+import { navigateSessionDocument } from "@/lib/sessionDocumentNavigation";
 
 import { FormEvent, useState } from "react";
 import ManagementPasswordChecklist from "@/components/ManagementPasswordChecklist";
@@ -62,7 +63,7 @@ export default function SecuritySettingsClient({
         return;
       }
 
-      if (data.requiresLogin) { window.location.assign("/login/manager"); return; }
+      if (data.requiresLogin) { navigateSessionDocument("/login/manager"); return; }
 
       const updatedEmail = data.email ?? newEmail.trim().toLowerCase();
 
@@ -115,7 +116,7 @@ export default function SecuritySettingsClient({
         return;
       }
 
-      if (data.requiresLogin) { window.location.assign("/login/manager"); return; }
+      if (data.requiresLogin) { navigateSessionDocument("/login/manager"); return; }
 
       setPasswordCurrentPassword("");
       setNewPassword("");

@@ -39,6 +39,7 @@ export function managementBillingHarness({ createdAt = new Date("2026-10-15T12:0
   let authorized = true;
   const cells = []; let cursor = 0; let effects = [];
   const hooks = {
+    startTransition: react.startTransition,
     useState(initial) { const i = cursor++; if (!(i in cells)) cells[i] = typeof initial === "function" ? initial() : initial; return [cells[i], value => { cells[i] = typeof value === "function" ? value(cells[i]) : value; }]; },
     useRef(initial) { const i = cursor++; return cells[i] ??= { current: initial }; },
     useEffect(fn, deps) { const i = cursor++; if (!cells[i] || deps.some((value, j) => value !== cells[i][j])) effects.push(fn); cells[i] = deps; },

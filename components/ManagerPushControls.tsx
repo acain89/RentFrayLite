@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { startTransition,  useCallback, useEffect, useRef, useState } from "react";
 import { currentDevice, supportsNotifications, verifyDeviceNotifications, type DeviceState } from "@/lib/managerPushDevice";
 type Update = { id: string; kind: string; createdAt: string };
 const statusText = { on: "Notifications are on for this device.", off: "Notifications are off for this device.", blocked: "Notifications are blocked in your browser settings.", unsupported: "Notifications aren't supported in this browser. On iPhone or iPad, open RentFrayLite from your Home Screen." };
@@ -26,7 +26,7 @@ export default function ManagerPushControls() {
   }, []);
   useEffect(() => {
     if (!open) return;
-    void check();
+    startTransition(() => { void check(); });
     if (!historyRequest.current) historyRequest.current = (async () => {
       try {
         const response = await fetch("/api/manager/push?history=1", { cache: "no-store" });

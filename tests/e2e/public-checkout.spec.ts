@@ -1,6 +1,17 @@
+import { build } from "esbuild";
+import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 test.describe("Public recurring checkout", () => {
+  let bundle = "";
+  test.beforeAll(async () => {
+    const result = await build({stdin:{contents:'import React from "react";import {createRoot} from "react-dom/client";import Checkout from "./app/[accountCode]/RecurringCheckoutClient";createRoot(document.getElementById("root")!).render(<Checkout businessName="Isolated Test Property" accountCode="AC-1234" plans={[{id:"fixture-tier-1",name:"Tier 1",baseAmountCents:100,dueDay:1,charges:[]},{id:"fixture-tier-2",name:"Tier 2",baseAmountCents:300,dueDay:1,charges:[]}]}/>);',resolveDir:process.cwd(),loader:"tsx"},bundle:true,write:false,platform:"browser",jsx:"automatic",define:{"process.env.NODE_ENV":JSON.stringify("production")},plugins:[{name:"mock-link",setup(builder){builder.onResolve({filter:/^next\/link$/},()=>({path:"link",namespace:"fixture"}));builder.onLoad({filter:/.*/,namespace:"fixture"},()=>({contents:'import React from "react";export default function Link({children,...props}){return React.createElement("a",props,children)}',loader:"js",resolveDir:path.resolve(".")}));}}]});
+    bundle = result.outputFiles[0].text;
+  });
+  test.beforeEach(async ({page}) => {
+    await page.route("**/*",route => new URL(route.request().url()).origin === "https://rfl-checkout.invalid" && new URL(route.request().url()).pathname === "/AC-1234"
+      ? route.fulfill({contentType:"text/html",body:'<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body><div id="root"></div><script>'+bundle.replace(/<\/script/gi,"<\\/script")+'</script></body></html>'}) : route.abort());
+  });
   test("payer can prepare a Tier 2 ACH payment for review", async ({ page }) => {
     let capturedRequest: Record<string, unknown> | null = null;
 
@@ -34,7 +45,7 @@ test.describe("Public recurring checkout", () => {
     await page.goto("/AC-1234");
 
     await expect(
-      page.getByRole("heading", { name: "Andrew's Pottery" })
+      page.getByRole("heading", { name: "Isolated Test Property" })
     ).toBeVisible();
 
     await expect(page.getByText("Account code:")).toBeVisible();
@@ -63,25 +74,10 @@ test.describe("Public recurring checkout", () => {
       "(555) 555-1234"
     );
 
-    const ach = page.getByRole("radio", {
-      name: "Bank account",
-    });
-
-    const card = page.getByRole("radio", {
-      name: "Credit or debit card",
-    });
-
-    await expect(ach).toBeChecked();
-    await expect(card).not.toBeChecked();
-
-    await card.check();
-
-    await expect(card).toBeChecked();
-    await expect(ach).not.toBeChecked();
-
-    await ach.check();
-
-    await expect(ach).toBeChecked();
+    // The reviewed production policy is ACH-only; CARD controls were retired.
+    await expect(page.getByText("Payment method: ACH bank account.",{exact:true})).toBeVisible();
+    await expect(page.getByRole("radio",{name:"Bank account"})).toHaveCount(0);
+    await expect(page.getByRole("radio",{name:"Credit or debit card"})).toHaveCount(0);
     await expect(reviewButton).toBeEnabled();
 
     await reviewButton.click();
@@ -90,7 +86,7 @@ test.describe("Public recurring checkout", () => {
 
     expect(capturedRequest).toEqual({
       accountCode: "AC-1234",
-      planId: "cms590lm6000exk7jvtnc3avw",
+      planId: "fixture-tier-2",
       unitNumber: "E2E-101",
       firstName: "Playwright",
       lastName: "Test",

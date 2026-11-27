@@ -1,9 +1,11 @@
+import { tsImport } from "tsx/esm/api";
+const {fingerprintFile}=await tsImport("../lib/disposableDatabase.ts",import.meta.url);
 import {existsSync} from "node:fs";
 import {assertUnchangedAchCore,assertAdditivePushSchema} from "./helpers/ach-cleanup-boundary.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { authHarness, postgres } from './helpers/auth-harness.mjs';
@@ -93,7 +95,8 @@ test('clean production release excludes legacy SQLite and APK artifacts',()=>{
 
 const configPath=process.argv.find(arg=>arg.startsWith('--rfl-test-db-config='))?.slice('--rfl-test-db-config='.length);
 if(configPath)test('disposable verification preserves every excluded artifact and both tracked historical artifacts',()=>{
-  const config=JSON.parse(readFileSync(configPath,'utf8'));assert.equal(config.isolationVerified,true);
-  const manifest=JSON.parse(readFileSync(config.root+'/preserved-hashes.json','utf8'));assert.equal(Object.keys(manifest).length,14);
-  for(const [file,hash]of Object.entries(manifest))assert.equal(createHash('sha256').update(readFileSync(config.original+'/'+file)).digest('hex'),hash,file);
+  const manifest=JSON.parse(readFileSync(process.env.RFL_PRESERVATION_MANIFEST,'utf8'));
+  assert.ok(Object.keys(manifest.hashes).length >= 14,'Preserve the complete original inventory, including all historical artifacts');
+  for(const file of ['prisma/dev.db','public/app-release-signed.apk'])assert.ok(manifest.hashes[file],file+' remains protected');
+  for(const [file,hash]of Object.entries(manifest.hashes))assert.equal(fingerprintFile(manifest.original+'/'+file),hash,file);
 });

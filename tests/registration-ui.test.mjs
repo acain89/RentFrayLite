@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
@@ -5,6 +7,8 @@ import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { managementBillingHarness } from './helpers/management-billing-harness.mjs';
+const screenshotRoot=process.env.RFL_SCREENSHOT_DIR??path.join(os.tmpdir(),"rfl-ui-"+process.pid+"-"+Date.now());
+
 
 const h=managementBillingHarness(),phone=h.load('lib/registrationPhone.ts');
 const bundle=await build({entryPoints:['lib/registrationPhone.ts'],bundle:true,write:false,platform:'browser',format:'iife',globalName:'phone'});
@@ -105,7 +109,7 @@ test('mobile and desktop UI preserve phone validation without SMS enrollment',as
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
  assert.deepEqual(await page.evaluate(()=>{const card=document.querySelector('.rfl-registration-card').getBoundingClientRect();return [...document.querySelectorAll('.rfl-field input,.rfl-field select')].flatMap(el=>{const r=el.getBoundingClientRect();return r.left>=card.left && r.right<=card.right ? [] : [{id:el.id,left:r.left,right:r.right,cardLeft:card.left,cardRight:card.right}];});}),[]);
  for(const selector of ['#contactPhone','#registration-password-rules','#confirmPassword'])await expect(page.locator(selector)).toBeVisible();
- await page.screenshot({path:`../evidence/registration-${width}.png`,fullPage:true});
+ await page.screenshot({path:path.join(screenshotRoot,`registration-${width}.png`),fullPage:true});
  await page.getByRole('button',{name:'Continue',exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__redirect)).toBe('/setup/recurring/tiers');
  assert.equal(apiCalls,1);assert.equal(f.state().businesses[0].contactPhone,'+13125551234');assert.equal(f.state().businesses[0].smsConsentPhone,undefined);assert.deepEqual(external,[]);await page.close();
  }}finally{await instance.close();}

@@ -1,0 +1,20 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
+import { mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { tsImport } from "tsx/esm/api";
+const safety = await tsImport("../lib/disposableDatabase.ts",import.meta.url);
+function fixture() {
+ const nonce=randomBytes(16).toString("hex"),data=path.join(os.tmpdir(),"rfl-b1-pg-"+nonce);
+ const config={isolationVerified:true,nonce,host:"127.0.0.1",port:15439,role:"rfl_s5_"+nonce.slice(0,12),database:"rfl_s5_"+nonce.slice(0,12),owner:"rfl_owner_"+nonce.slice(0,12),password:"a".repeat(64),data,project:process.cwd(),systemId:"1234567890123456789",startedAt:"2026-11-26T00:00:00.000Z",pid:process.pid,connectionLimit:12,scopes:["regression","seed-admin"]};
+ mkdirSync(data);writeFileSync(path.join(data,"postmaster.pid"),String(process.pid));const {password:omitted,...proof}=config;void omitted;writeFileSync(data+".owner.json",JSON.stringify(proof));
+ const identity={username:config.role,database:config.database,directory:data,address:config.host,port:config.port,owner:config.owner,systemid:config.systemId,nonce,started:config.startedAt,superuser:false,createdb:false,createrole:false,replication:false,bypassrls:false,cancreate:false,ownerMember:false,connectionlimit:64};
+ return {config,identity,cleanup(){assert.equal(path.resolve(data),path.resolve(os.tmpdir(),"rfl-b1-pg-"+nonce));rmSync(data,{recursive:true});rmSync(data+".owner.json");}};
+}
+for (const [name,patch] of [["flag only",{nonce:undefined}],["production host",{host:"production.invalid"}],["default port",{port:5432}],["privileged role",{role:"postgres"}],["unowned directory",{data:os.tmpdir()}],["URL override",{url:"postgresql://synthetic@production.invalid/shared"}],["scope escalation",{scopes:["production"]}],["pool override",{connectionLimit:100}]]) test("disposable proof rejects "+name+" before any database query",async()=>{const f=fixture();let queries=0;try{await assert.rejects(()=>safety.verifyDisposableIdentity({$queryRawUnsafe:async()=>{queries++;return [f.identity];}},{...f.config,...patch}));assert.equal(queries,0);}finally{f.cleanup();}});
+for (const [name,patch] of [["nonce",{nonce:"wrong"}],["cluster",{systemid:"9999999999999999999"}],["owner",{owner:"postgres"}],["superuser",{superuser:true}],["create database",{createdb:true}],["create role",{createrole:true}],["bypass RLS",{bypassrls:true}],["schema creation",{cancreate:true}],["owner membership",{ownerMember:true}],["other database",{database:"shared"}],["restarted server",{started:"2026-01-01T00:00:00.000Z"}]]) test("disposable proof rejects live "+name+" mismatch without mutation",async()=>{const f=fixture();try{await assert.rejects(()=>safety.verifyDisposableIdentity({$queryRawUnsafe:async()=>[{...f.identity,...patch}]},f.config),/PROOF_REJECTED/);}finally{f.cleanup();}});
+test("disposable proof accepts exact native identity and bounded pool",async()=>{const f=fixture();try{await safety.verifyDisposableIdentity({$queryRawUnsafe:async()=>[f.identity]},f.config,"seed-admin");const url=new URL(safety.disposableUrl(f.config));assert.equal(url.hostname,"127.0.0.1");assert.equal(url.searchParams.get("connection_limit"),"12");}finally{f.cleanup();}});
+test("disposable proof rejects changed ownership file and PID before query",async()=>{const f=fixture();let queries=0;try{const text=readFileSync(f.config.data+".owner.json","utf8");writeFileSync(f.config.data+".owner.json",text.replace(f.config.nonce,"b".repeat(32)));await assert.rejects(()=>safety.verifyDisposableIdentity({$queryRawUnsafe:async()=>{queries++;return [f.identity];}},f.config));assert.equal(queries,0);}finally{f.cleanup();}});
+test("disposable proof never falls back to inherited database credentials",()=>{assert.throws(()=>safety.loadDisposableConfig([]),/PROOF_REJECTED/);assert.throws(()=>safety.loadDisposableConfig(["--rfl-test-db-config=","--rfl-test-db-config=second"]),/PROOF_REJECTED/);});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition,  useEffect, useRef, useState } from "react";
 import {
   useRouter,
   useSearchParams,
@@ -296,12 +296,11 @@ const settingsMode =
     const validationError = validateTiers(tiers);
 
     if (validationError) {
-      setSaveStatus("error");
-      setError(validationError);
+      startTransition(() => { setSaveStatus("error"); setError(validationError); });
       return;
     }
 
-    setError("");
+    startTransition(() => setError(""));
 
     const snapshot = tiers.map((tier) => ({ ...tier }));
     const snapshotRevision = revision.current;

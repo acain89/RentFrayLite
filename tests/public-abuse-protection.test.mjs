@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import * as zod from 'zod';
 import bcrypt from 'bcryptjs';
 import { readFileSync } from 'node:fs';
-import { harness, postgres } from './helpers/checkout-harness.mjs';
+import { harness, postgres, openVerifiedTestDatabase } from './helpers/checkout-harness.mjs';
 import { managementBillingHarness } from './helpers/management-billing-harness.mjs';
 
 const json = (body, headers = {}) => new Request('https://example.test/api', {method:'POST',headers:{origin:'https://example.test','content-type':'application/json',...headers},body:JSON.stringify(body)});
@@ -50,7 +50,7 @@ for (const backend of ['isolated', ...(postgres ? ['postgres'] : [])]) {
       if(backend==='postgres'){
         const config=JSON.parse(readFileSync(process.argv.find(arg=>arg.startsWith('--rfl-test-db-config=')).split('=').slice(1).join('='),'utf8'));
         assert.equal(config.isolationVerified,true);assert.equal(config.host,'127.0.0.1');
-        independent=new postgres.constructor({datasources:{db:{url:`postgresql://${config.role}:${config.password}@127.0.0.1:${config.port}/${config.database}`}}});
+        independent=await openVerifiedTestDatabase();
       }
       try { assert.equal((await other.load('lib/publicRequestBudget.ts').reservePublicRequest(independent,kind,identity)).allowed,false); }
       finally { if(independent!==h.db)await independent.$disconnect(); }

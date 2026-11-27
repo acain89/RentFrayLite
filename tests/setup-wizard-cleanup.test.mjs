@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
@@ -5,6 +7,8 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {build} from 'esbuild';
 import {managementBillingHarness} from './helpers/management-billing-harness.mjs';
 import {tierFixture} from './helpers/tier-configuration-harness.mjs';
+const screenshotRoot=process.env.RFL_SCREENSHOT_DIR??path.join(os.tmpdir(),"rfl-ui-"+process.pid+"-"+Date.now());
+
 const plan=()=>({id:'a',businessId:'business',isActive:true,name:'Standard',baseAmountCents:10000,dueDay:1,gracePeriodDays:5,initialLateFeeCents:0,dailyLateFeeCents:0,dailyLateFeeMaxDays:0,charges:[]});
 const rule=days=>({recurringPlanId:'a',dueDay:1,gracePeriodDays:5,initialLateFeeCents:0,dailyLateFeeCents:days===0?0:100,dailyLateFeeMaxDays:days});
 for(const days of [0,25,-1,26,1.5,'bad','25',null])test(`bulk and paginated billing agree on daily days ${JSON.stringify(days)}`,async()=>{
@@ -57,18 +61,18 @@ test('actual setup editors: mobile/desktop copy, assignments, zero placeholders,
  try{for(const width of [375,1280]){
  let v=await view('tiers',width);await expect(v.page.getByRole('heading',{level:1})).toHaveText('Create each monthly price option your customers can select.');await expect(v.page.getByText('Enter numbers only. No $ needed.',{exact:true})).toHaveCount(0);
  await v.page.getByRole('button',{name:'+ Add Tier',exact:true}).click();await v.page.getByLabel('Tier name',{exact:true}).last().fill('Premium');await v.page.getByLabel('Monthly amount',{exact:true}).last().fill('100.50');await v.page.getByRole('button',{name:/^Continue to /}).click();await expect.poll(()=>v.page.evaluate(()=>window.__redirect)).toBe('/setup/recurring/charges');assert.equal((await v.f.db.recurringPlan.findMany({where:{businessId:v.f.businessId,name:'Premium'}}))[0].baseAmountCents,10050);
- await v.page.screenshot({path:`../evidence/tiers-${width}.png`,fullPage:true});assert.deepEqual(v.external,[]);await v.page.close();
+ await v.page.screenshot({path:path.join(screenshotRoot,`tiers-${width}.png`),fullPage:true});assert.deepEqual(v.external,[]);await v.page.close();
  v=await view('charges',width);await expect(v.page.getByText('Edit one tier at a time',{exact:true})).toHaveCount(0);await expect(v.page.getByText('Enter numbers only. No $ needed.',{exact:true})).toHaveCount(0);await expect(v.page.getByRole('link',{name:'Back to Tiers',exact:true})).toHaveAttribute('href','/setup/recurring/tiers');
  await v.page.getByRole('button',{name:/Add.*Charge/i}).click();await v.page.getByLabel('Charge name',{exact:true}).fill('Water');await v.page.getByLabel('Monthly amount',{exact:true}).fill('10');await v.page.getByLabel('Selected tiers',{exact:true}).check();await v.page.getByRole('button',{name:/^Continue to /}).click();await expect(v.page.getByRole('alert')).toContainText(/at least one tier/i);
  await v.page.getByRole('checkbox').first().check();await v.page.getByRole('button',{name:/^Continue to /}).click();await expect.poll(()=>v.page.evaluate(()=>window.__redirect)).toBe('/setup/recurring/billing');let rows=await v.f.db.recurringCharge.findMany({where:{isActive:true}});assert.equal(rows.length,1);assert.equal(rows[0].recurringPlanId,v.plans[0].id);
  await v.page.getByLabel('All tiers',{exact:true}).check();await v.page.getByRole('button',{name:/^Continue to /}).click();await expect.poll(async()=> (await v.f.db.recurringCharge.findMany({where:{isActive:true}})).length).toBe(2);
- await v.page.screenshot({path:`../evidence/charges-${width}.png`,fullPage:true});assert.deepEqual(v.external,[]);await v.page.close();
+ await v.page.screenshot({path:path.join(screenshotRoot,`charges-${width}.png`),fullPage:true});assert.deepEqual(v.external,[]);await v.page.close();
  v=await view('billing',width);const initial=v.page.getByLabel('Initial late fee',{exact:true}),daily=v.page.getByLabel('Daily late fee',{exact:true}),days=v.page.locator('input[type="number"]');
  await expect(v.page.getByText('Edit one tier at a time',{exact:true})).toHaveCount(0);await expect(v.page.getByText('Payments are due on the 1st of every month. Choose your grace period and late fees.',{exact:true})).toBeVisible();await expect(v.page.locator('select option')).toHaveText(['3 days','4 days','5 days']);
  await expect(initial).toHaveValue('');await expect(daily).toHaveValue('');await expect(initial).toHaveAttribute('placeholder','0.00');await expect(daily).toHaveAttribute('placeholder','0.00');assert.equal(await initial.evaluate(el=>getComputedStyle(el,'::placeholder').color!==getComputedStyle(el).color),true);
  await v.page.getByRole('button',{name:/^Continue to /}).click();await expect.poll(()=>v.page.evaluate(()=>window.__redirect)).toBe('/setup/recurring/review').catch(async error=>{throw Error(error.message+'\n'+JSON.stringify({alerts:await v.page.getByRole('alert').allTextContents(),requests:v.requests}));});let stored=await v.f.row(v.f.first.id);assert.equal(stored.initialLateFeeCents,0);assert.equal(stored.dailyLateFeeCents,0);
  const help=await v.page.locator('.rfl-field-help').filter({hasText:'Includes the 1st.'}).boundingBox(),labelBox=await v.page.locator('label[for^="initial-fee-"]').boundingBox();assert.ok(help.y+help.height<=labelBox.y,'Grace-period help must not overlap the fee label');
- await v.page.screenshot({path:`../evidence/billing-zero-${width}.png`,fullPage:true});
+ await v.page.screenshot({path:path.join(screenshotRoot,`billing-zero-${width}.png`),fullPage:true});
  await initial.fill('100');await daily.fill('100.50');await days.fill('25');await v.page.getByRole('button',{name:/^Continue to /}).click();await expect.poll(async()=> (await v.f.row(v.f.first.id)).dailyLateFeeCents).toBe(10050);stored=await v.f.row(v.f.first.id);assert.equal(stored.initialLateFeeCents,10000);assert.equal(stored.dailyLateFeeMaxDays,25);
  await expect(days).toHaveAttribute('min','0');await expect(days).toHaveAttribute('max','25');await expect(days).toHaveAttribute('step','1');await days.press('ArrowUp');await expect(days).toHaveValue('25');await days.fill('0');await days.press('ArrowDown');await expect(days).toHaveValue('0');
  for(const value of ['-1','26','1.5','']){await days.fill(value);await expect(v.page.locator('[id^="daily-days-error-"]')).toHaveText('Enter a whole number from 0 to 25 for daily late-fee days.');await expect(days).toHaveAttribute('aria-invalid','true');const before=v.requests.filter(r=>r.body?.advance).length;await v.page.getByRole('button',{name:/^Continue to /}).click();assert.equal(v.requests.filter(r=>r.body?.advance).length,before);if(value==='26')await expect(days).toHaveValue('26');}
@@ -76,7 +80,7 @@ test('actual setup editors: mobile/desktop copy, assignments, zero placeholders,
  await daily.fill('');await days.fill('0');for(const value of ['-1','100.001','bad']){await initial.fill(value);await v.page.getByRole('button',{name:/^Continue to /}).click();await expect(v.page.getByRole('alert')).toContainText('valid initial late fee');}
  assert.deepEqual(v.external,[]);await v.page.close();
  v=await view('billing',width,{existing:true});await expect(v.page.getByLabel('Initial late fee',{exact:true})).toHaveValue('100.00');await expect(v.page.getByLabel('Daily late fee',{exact:true})).toHaveValue('100.50');await expect(v.page.locator('input[type="number"]')).toHaveValue('25');await v.page.close();
- v=await view('review',width);await expect(v.page.getByText('Payment Due:',{exact:true})).toBeVisible();await expect(v.page.getByText('Rent Due:',{exact:true})).toHaveCount(0);await expect(v.page.getByRole('button',{name:'Continue to Stripe',exact:true})).toBeVisible();await v.page.screenshot({path:`../evidence/review-${width}.png`,fullPage:true});assert.deepEqual(v.external,[]);await v.page.close();
+ v=await view('review',width);await expect(v.page.getByText('Payment Due:',{exact:true})).toBeVisible();await expect(v.page.getByText('Rent Due:',{exact:true})).toHaveCount(0);await expect(v.page.getByRole('button',{name:'Continue to Stripe',exact:true})).toBeVisible();await v.page.screenshot({path:path.join(screenshotRoot,`review-${width}.png`),fullPage:true});assert.deepEqual(v.external,[]);await v.page.close();
  v=await view('paginated',width,{paginatedStep:'billing'});await expect(v.page.getByLabel('Initial late fee',{exact:true})).toHaveValue('');await expect(v.page.getByLabel('Daily late fee',{exact:true})).toHaveValue('');await expect(v.page.locator('input[type="number"]')).toHaveAttribute('max','25');await v.page.getByLabel('Initial late fee',{exact:true}).fill('100.50');await v.page.getByRole('button',{name:'Save billing rules',exact:true}).click();await expect.poll(async()=> (await v.f.row(v.f.first.id)).initialLateFeeCents).toBe(10050);await v.page.close();
  }
  }finally{await browser.close();}

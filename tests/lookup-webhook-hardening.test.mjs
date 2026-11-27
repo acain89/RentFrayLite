@@ -8,7 +8,7 @@ import ts from 'typescript';
 import Stripe from 'stripe';
 import path from 'node:path';
 import os from 'node:os';
-import {harness,postgres} from './helpers/checkout-harness.mjs';
+import {harness,postgres,openVerifiedTestDatabase} from './helpers/checkout-harness.mjs';
 const require=createRequire(import.meta.url),secret='proxy-test-secret-with-at-least-32-bytes',webhookSecret='whsec_exact_raw_test',sdk=new Stripe('sk_test_no_network');
 // Same explicit disposable fields as checkout-harness; no URL/env fallback.
 function lookupRestartUrl(config){
@@ -72,7 +72,7 @@ for(const backend of ['isolated',...(postgres?['postgres']:[])]) {
   const before=await h.payments();const results=await Promise.all(Array.from({length:limit+10},()=>budget.reservePublicRequest(h.db,'LOOKUP',identity)));
   assert.equal(results.filter(r=>r.allowed).length,limit);
   const denied=await budget.publicRequestGuard(h.db,'LOOKUP',identity);assert.equal(denied.status,429);assert.ok(Number(denied.headers.get('retry-after'))<=600);assert.ok(Number(denied.headers.get('retry-after'))>0);
-  const other=await harness('ACH',backend);let independent=h.db; if(backend==='postgres'){independent=await openLookupRestartClient(loadLookupRestartConfig(),postgres.constructor);}try{assert.equal((await other.load('lib/publicRequestBudget.ts').reservePublicRequest(independent,'LOOKUP',identity)).allowed,false);}finally{if(independent!==h.db)await independent.$disconnect();}
+  const other=await harness('ACH',backend);let independent=h.db; if(backend==='postgres'){independent=await openVerifiedTestDatabase();}try{assert.equal((await other.load('lib/publicRequestBudget.ts').reservePublicRequest(independent,'LOOKUP',identity)).allowed,false);}finally{if(independent!==h.db)await independent.$disconnect();}
   assert.equal((await budget.reservePublicRequest(h.db,'LOOKUP',identity+'other')).allowed,true);
   const rows=await h.db.publicRequestBudget.findMany({where:{key:{startsWith:'LOOKUP:'},expiresAt:{lte:new Date(Date.now()+86400000)}},take:100});assert.ok(rows.every(r=>!r.key.includes(identity)));
   if(backend==='postgres')await h.db.publicRequestBudget.updateMany({where:{key:{startsWith:'LOOKUP:'}},data:{expiresAt:new Date(0)}});

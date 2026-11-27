@@ -2,7 +2,7 @@
 import { MAX_DAILY_LATE_FEE_DAYS, DAILY_LATE_FEE_DAYS_ERROR, parseDailyLateFeeDays } from "@/lib/recurringValidation";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { startTransition,  useEffect, useRef, useState } from "react";
 import {
   useRouter,
   useSearchParams,
@@ -325,7 +325,7 @@ export default function RecurringBillingClient({
     const validationError = validateRules(rules);
 
     if (validationError) {
-      setSaveStatus("idle");
+      startTransition(() => setSaveStatus("idle"));
       return;
     }
 

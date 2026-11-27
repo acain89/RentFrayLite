@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { MAX_DAILY_LATE_FEE_DAYS, DAILY_LATE_FEE_DAYS_ERROR, parseDailyLateFeeDays } from "@/lib/recurringValidation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { startTransition,  useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SetupProgress from "@/components/setup/SetupProgress";
 
@@ -38,7 +38,7 @@ export default function PaginatedRecurringConfiguration({ step, highestReachedSt
     const data = await response.json(); if (!response.ok) throw Error(data.error ?? "Unable to load tiers.");
     setPage(data); choose(data.tiers.find((t: Tier) => t.id === selectedId.current) ?? data.tiers[0] ?? null);
   }, [cursor, choose]);
-  useEffect(() => { void load().catch(error => setMessage(error.message)); }, [load]);
+  useEffect(() => { startTransition(() => { void load().catch(error => setMessage(error.message)); }); }, [load]);
   async function save(operation: string, payload: Record<string, unknown>) {
     const body = JSON.stringify({ operation, ...payload });
     if (pending.current?.body !== body) pending.current = { body, requestId: crypto.randomUUID() };

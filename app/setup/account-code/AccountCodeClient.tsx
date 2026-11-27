@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition,  useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SetupProgress from "@/components/setup/SetupProgress";
 
@@ -74,7 +74,7 @@ export default function AccountCodeClient({
 
   useEffect(() => {
     if (initialAccountCode) {
-      setAvailable(true);
+      startTransition(() => setAvailable(true));
       return;
     }
 
@@ -110,14 +110,12 @@ export default function AccountCodeClient({
 
   useEffect(() => {
     if (!isValidAccountCode(accountCode)) {
-      setAvailable(null);
-      setChecking(false);
+      startTransition(() => { setAvailable(null); setChecking(false); });
       return;
     }
 
     if (accountCode === initialAccountCode) {
-      setAvailable(true);
-      setChecking(false);
+      startTransition(() => { setAvailable(true); setChecking(false); });
       return;
     }
 
@@ -127,8 +125,7 @@ export default function AccountCodeClient({
       active &&
       !controller.signal.aborted &&
       currentCode.current === accountCode;
-    setAvailable(null);
-    setChecking(true);
+    startTransition(() => { setAvailable(null); setChecking(true); });
 
     const timer = window.setTimeout(async () => {
       try {
